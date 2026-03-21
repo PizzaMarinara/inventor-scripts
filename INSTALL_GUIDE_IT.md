@@ -182,11 +182,9 @@ Il codice del progetto deve essere presente sulla macchina locale. Ci sono due m
 **Clonare il repository:**
 
 ```powershell
-git clone https://github.com/<organizzazione>/inventor-scripts.git
+git clone https://github.com/pizzamarinara/inventor-scripts.git
 cd inventor-scripts
 ```
-
-Sostituire `<organizzazione>` con il percorso GitHub corretto comunicato dal team.
 
 ### Opzione B — Scaricare lo ZIP da GitHub
 
