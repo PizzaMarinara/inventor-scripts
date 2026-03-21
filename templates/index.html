@@ -1,5 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Inventor Agent</title></head>
-<body><p>Loading…</p></body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventor Agent</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="layout">
+
+    <!-- LEFT PANEL -->
+    <aside id="sidebar">
+      <h1 id="brand">Inventor Agent</h1>
+
+      <section id="file-section">
+        <h2>File</h2>
+        <select id="file-select"><option value="">— select file —</option></select>
+        <button id="extract-btn">Extract Parameters</button>
+      </section>
+
+      <section id="params-section">
+        <h3>Parameters</h3>
+        <div id="params-wrap">
+          <table id="params-table">
+            <thead>
+              <tr><th>Name</th><th>Value</th><th>Units</th><th>Comment</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="outputs-section">
+        <h3>Outputs</h3>
+        <ul id="outputs-list"></ul>
+      </section>
+    </aside>
+
+    <!-- RIGHT PANEL -->
+    <main id="chat">
+      <div id="messages"></div>
+      <div id="status" class="hidden">
+        <span class="spinner"></span> Agent thinking…
+      </div>
+      <form id="chat-form">
+        <textarea id="msg-input" rows="3" placeholder="Ask the agent… (Shift+Enter for new line, Enter to send)"></textarea>
+        <button id="send-btn" type="submit">Send</button>
+      </form>
+    </main>
+
+  </div>
+  <script src="/static/app.js"></script>
+</body>
 </html>

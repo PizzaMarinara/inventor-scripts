@@ -1,0 +1,301 @@
+/* ── Reset & base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  color: #1a1a2e;
+  background: #f5f6fa;
+}
+
+/* ── Two-column layout ─────────────────────────────────────────────────────── */
+#layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+#sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: #fff;
+  border-right: 1px solid #e0e4ef;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+#brand {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  background: #2563eb;
+  padding: 0.75rem 1rem;
+  letter-spacing: 0.02em;
+}
+
+#sidebar section {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e0e4ef;
+}
+
+#sidebar h2 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+#sidebar h3 {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+#file-select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+#extract-btn {
+  width: 100%;
+  padding: 0.4rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#extract-btn:hover { background: #1d4ed8; }
+#extract-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+/* Parameters table */
+#params-wrap {
+  overflow-x: auto;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+#params-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+#params-table th {
+  background: #f1f5f9;
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid #e0e4ef;
+}
+
+#params-table td {
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+
+#params-table td.mono, #params-table td:nth-child(2), #params-table td:nth-child(3) {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: #1d4ed8;
+}
+
+/* Outputs list */
+#outputs-list {
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+#outputs-list li {
+  padding: 0.2rem 0;
+}
+
+#outputs-list a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+#outputs-list a:hover { text-decoration: underline; }
+
+/* ── Chat panel ────────────────────────────────────────────────────────────── */
+#chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Status bar */
+#status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1.25rem;
+  background: #eff6ff;
+  border-top: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+/* Chat form */
+#chat-form {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #fff;
+  border-top: 1px solid #e0e4ef;
+}
+
+#msg-input {
+  flex: 1;
+  resize: none;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#msg-input:focus { border-color: #2563eb; }
+
+#send-btn {
+  padding: 0 1.25rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  align-self: flex-end;
+  height: 2.4rem;
+}
+
+#send-btn:hover { background: #1d4ed8; }
+#send-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+/* ── Chat bubbles ──────────────────────────────────────────────────────────── */
+.bubble {
+  max-width: 75%;
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.88rem;
+}
+
+.bubble-user {
+  background: #2563eb;
+  color: #fff;
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+}
+
+.bubble-agent {
+  background: #fff;
+  border: 1px solid #e0e4ef;
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+  color: #1a1a2e;
+}
+
+/* ── Tool badge ────────────────────────────────────────────────────────────── */
+.tool-badge {
+  align-self: flex-start;
+  background: #f0f4ff;
+  border: 1px solid #c7d7fd;
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  color: #3730a3;
+  cursor: pointer;
+  max-width: 75%;
+}
+
+.tool-badge summary {
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tool-badge summary::before { content: "⚙"; }
+.tool-badge[open] summary::before { content: "⚙"; }
+
+.tool-badge pre {
+  margin-top: 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.75rem;
+  color: #4338ca;
+  border-top: 1px solid #c7d7fd;
+  padding-top: 0.4rem;
+}
+
+/* ── Error alert ───────────────────────────────────────────────────────────── */
+.error-alert {
+  align-self: flex-start;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  max-width: 75%;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Utilities ─────────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
