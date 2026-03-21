@@ -18,7 +18,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from agent.llm import LLMClient, LLMResponse, ToolCall
 from agent.tools import TOOLS
@@ -27,6 +27,16 @@ from extract import extract_parameters, extract_bom, extract_properties
 from modify import set_parameter, set_parameters_batch, save_as, open_in_inventor
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class StreamEvent:
+    type: str          # "text_delta" | "tool_start" | "tool_result" | "done" | "error"
+    content: str = ""
+    tool_name: str = ""
+    tool_input: dict = field(default_factory=dict)
+    result: Any = None
+    iterations: int = 0
 
 
 SYSTEM_PROMPT = """You are an Autodesk Inventor automation assistant.
@@ -107,15 +117,17 @@ class AgentLoop:
         self._executor = executor
         self._max_iterations = max_iterations
 
-    def run(self, instruction: str) -> AgentResult:
+    def run_streaming(self, instruction: str) -> Iterator[StreamEvent]:
         """
-        Run a single agentic turn for the given natural-language instruction.
+        Yield StreamEvents as they occur.
 
-        Returns AgentResult with the final text, tool audit trail, and iteration count.
+        Event sequence per tool call:
+            tool_start  → emitted immediately when the LLM requests a tool
+            tool_result → emitted after the tool returns (or raises)
+        Final event is always `done` (or `done` with error text on max_iterations).
+        Used by the web layer; also the single source of truth for run().
         """
         messages: list[dict] = [{"role": "user", "content": instruction}]
-        all_tool_calls: list[ToolCall] = []
-        all_tool_results: list[dict] = []
         iteration = 0
 
         while iteration < self._max_iterations:
@@ -127,12 +139,12 @@ class AgentLoop:
             )
 
             if response.stop_reason == "end_turn":
-                return AgentResult(
-                    final_text=response.text,
-                    tool_calls_made=all_tool_calls,
-                    tool_results=all_tool_results,
+                yield StreamEvent(
+                    type="done",
+                    content=response.text,
                     iterations=iteration,
                 )
+                return
 
             if response.stop_reason == "tool_use":
                 # Use assistant_content (provider-agnostic) — never response.raw
@@ -140,7 +152,12 @@ class AgentLoop:
 
                 tool_results_block = []
                 for tc in response.tool_calls:
-                    all_tool_calls.append(tc)
+                    yield StreamEvent(
+                        type="tool_start",
+                        tool_name=tc.name,
+                        tool_input=tc.input,
+                        iterations=iteration,
+                    )
                     try:
                         result = self._executor.execute(tc)
                         logger.debug("Tool %s succeeded: %s", tc.name, result)
@@ -148,8 +165,18 @@ class AgentLoop:
                         result = {"error": str(e)}
                         logger.warning("Tool %s raised: %s", tc.name, e)
 
-                    result_str = json.dumps(result, default=str) if not isinstance(result, str) else result
-                    all_tool_results.append({"tool": tc.name, "result": result})
+                    yield StreamEvent(
+                        type="tool_result",
+                        tool_name=tc.name,
+                        result=result,
+                        iterations=iteration,
+                    )
+
+                    result_str = (
+                        json.dumps(result, default=str)
+                        if not isinstance(result, str)
+                        else result
+                    )
                     tool_results_block.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
@@ -158,12 +185,38 @@ class AgentLoop:
 
                 messages.append({"role": "user", "content": tool_results_block})
 
-        return AgentResult(
-            final_text=(
+        yield StreamEvent(
+            type="done",
+            content=(
                 f"Reached max iterations ({self._max_iterations}) without completing. "
                 "The model may be in an unexpected state. Please review and try again."
             ),
+            iterations=iteration,
+        )
+
+    def run(self, instruction: str) -> AgentResult:
+        """
+        Blocking version — delegates to run_streaming() to avoid logic duplication.
+        """
+        result_text = ""
+        all_tool_calls: list[ToolCall] = []
+        all_tool_results: list[dict] = []
+        iterations = 0
+
+        for event in self.run_streaming(instruction):
+            iterations = event.iterations or iterations
+            if event.type == "done":
+                result_text = event.content
+            elif event.type == "tool_start":
+                all_tool_calls.append(
+                    ToolCall(id="", name=event.tool_name, input=event.tool_input)
+                )
+            elif event.type == "tool_result":
+                all_tool_results.append({"tool": event.tool_name, "result": event.result})
+
+        return AgentResult(
+            final_text=result_text,
             tool_calls_made=all_tool_calls,
             tool_results=all_tool_results,
-            iterations=iteration,
+            iterations=iterations,
         )
