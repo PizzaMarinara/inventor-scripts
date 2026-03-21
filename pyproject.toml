@@ -1,0 +1,25 @@
+[project]
+name = "inventor-scripts"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pywin32>=306",           # Windows only — COM interface to Inventor
+    "anthropic>=0.40.0",      # Default LLM provider
+    "typer>=0.12.0",          # CLI
+    "rich>=13.0.0",           # Terminal output
+    "pydantic>=2.0.0",        # Data validation
+    "python-dotenv>=1.0.0",   # Load ANTHROPIC_API_KEY from .env
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]   # ensures bare imports (from utils import …) resolve from project root
+markers = [
+    "inventor: requires a running Inventor installation (skip in CI)"
+]
+testpaths = ["tests"]

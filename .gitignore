@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+output/
+*.ipt
+*.iam
+*.ipn
+
+.claude/
+docs/
