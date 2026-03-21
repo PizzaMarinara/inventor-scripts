@@ -16,7 +16,7 @@ Non è richiesta alcuna esperienza di programmazione: si parte da zero, da un PC
 6. [Configurazione della chiave API](#6-configurazione-della-chiave-api)
 7. [Verifica dell'installazione](#7-verifica-dellinstallazione)
 8. [Preparare i file Inventor](#8-preparare-i-file-inventor)
-9. [Utilizzo — i tre comandi principali](#9-utilizzo--i-tre-comandi-principali)
+9. [Utilizzo — i quattro comandi principali](#9-utilizzo--i-quattro-comandi-principali)
 10. [Consigli pratici per gli ingegneri](#10-consigli-pratici-per-gli-ingegneri)
 11. [Risoluzione problemi comuni (Troubleshooting)](#11-risoluzione-problemi-comuni-troubleshooting)
 12. [Aggiornare il progetto](#12-aggiornare-il-progetto)
@@ -249,6 +249,9 @@ L'installazione scarica automaticamente:
 | `rich` | Output colorato e tabelle nel terminale |
 | `pydantic` | Validazione dei dati |
 | `python-dotenv` | Lettura del file `.env` con la chiave API |
+| `fastapi` | Framework web per l'interfaccia grafica su browser |
+| `uvicorn` | Server ASGI per eseguire FastAPI |
+| `jinja2` | Template HTML per le pagine web |
 | `pytest`, `pytest-mock` | Esecuzione dei test (solo gruppo `dev`) |
 
 > ⚠️ **Nota su `pywin32`:** questa libreria funziona solo su Windows. Su macOS o Linux l'installazione
@@ -369,16 +372,16 @@ Il flag `-m "not inventor"` esclude i test che richiedono un'istanza di Inventor
 **Output atteso (tutti i test verdi):**
 
 ```
-collected 36 items
+collected 50 items
 
 tests/test_agent_describe.py::test_describe_part_model PASSED
 tests/test_agent_describe.py::test_describe_assembly_model PASSED
 tests/test_agent_llm.py::test_llm_client_chat PASSED
 ...
-tests/test_utils.py::test_write_csv PASSED
-tests/test_utils.py::test_output_path PASSED
+tests/test_web.py::test_websocket_chat_sends_events_in_order PASSED
+tests/test_web.py::test_websocket_rejects_second_connection_when_session_active PASSED
 
-============================== 36 passed in X.XXs ==============================
+============================== 50 passed in X.XXs ==============================
 ```
 
 ### Se qualcosa fallisce
@@ -424,7 +427,7 @@ In entrambi i casi non è necessario fare nulla di speciale — basta eseguire i
 
 ---
 
-## 9. Utilizzo — i tre comandi principali
+## 9. Utilizzo — i quattro comandi principali
 
 Tutti i comandi si eseguono da PowerShell nella cartella radice del progetto.
 
@@ -540,6 +543,84 @@ dell'agente e un riepilogo degli strumenti utilizzati vengono stampati a schermo
 
 ---
 
+### 9.4 Avviare l'interfaccia web (Web UI)
+
+Oltre ai comandi da terminale, è disponibile un'interfaccia grafica accessibile dal browser.
+Si avvia con il comando `serve` e non richiede alcuna installazione aggiuntiva: basta aprire
+il browser dopo aver eseguito il comando.
+
+```powershell
+python main.py serve
+```
+
+Il server si avvia sulla porta `8000` e apre automaticamente il browser su
+`http://127.0.0.1:8000`. Per non aprire il browser automaticamente:
+
+```powershell
+python main.py serve --no-open
+```
+
+Per usare una porta diversa (ad esempio se la 8000 è già occupata):
+
+```powershell
+python main.py serve --port 8080
+```
+
+#### Cosa si può fare dall'interfaccia web
+
+L'interfaccia è divisa in due pannelli:
+
+**Pannello sinistro — File e parametri:**
+
+- **Selezionatore file:** mostra i file `.ipt`, `.iam`, `.ipn` presenti nella cartella `input\`.
+  Selezionare il file su cui si vuole lavorare prima di inviare un messaggio.
+- **Pulsante "Extract Parameters":** estrae automaticamente tutti i parametri dal file
+  selezionato e li mostra nella tabella sottostante, senza dover scrivere nulla a mano.
+- **Tabella parametri:** mostra nome, valore, unità e commento di ogni parametro estratto,
+  aggiornata automaticamente dopo ogni estrazione.
+- **Lista output:** elenca i file salvati nella cartella `output\`, con link per scaricarli
+  direttamente dal browser.
+
+**Pannello destro — Chat con l'agente:**
+
+- **Area messaggi:** mostra la conversazione con l'agente. I messaggi dell'utente appaiono
+  a destra (sfondo blu), le risposte dell'agente a sinistra (sfondo bianco).
+- **Badge degli strumenti:** ogni volta che l'agente usa uno strumento (ad esempio `set_parameter`
+  o `save_as`), appare un riquadro espandibile con il nome dello strumento, i parametri inviati
+  e il risultato ricevuto. Utile per capire cosa ha fatto l'agente passo per passo.
+- **Casella di testo:** digitare la richiesta in linguaggio naturale e premere **Invio** (o
+  **Shift+Invio** per andare a capo senza inviare).
+- **Indicatore "Agent thinking…":** appare mentre l'agente sta elaborando. Durante questo
+  periodo il pulsante "Send" è disabilitato per evitare invii multipli.
+
+#### Flusso di lavoro tipico con la Web UI
+
+1. Eseguire `python main.py serve` da PowerShell.
+2. Nel browser, selezionare il file dal menu a tendina in alto a sinistra.
+3. Fare clic su **"Extract Parameters"** per vedere i parametri disponibili.
+4. Digitare la richiesta nella casella in basso a destra, ad esempio:
+   `"Rendi LunghezzaCilindro di 200 mm più lungo e salva come versione_allungata.iam"`
+5. L'agente elabora la richiesta, mostra i passi eseguiti e salva il risultato.
+6. Il nuovo file compare automaticamente nella lista "Outputs" — fare clic sul nome per scaricarlo.
+
+> **Nota:** la Web UI richiede che `ANTHROPIC_API_KEY` sia impostata nel file `.env`.
+> Il supporto a `CLAUDE_CODE=true` tramite Web UI è pianificato per una versione futura.
+
+#### Limitazioni attuali della Web UI
+
+| Limitazione | Comportamento | Note |
+|---|---|---|
+| Sessione singola | Solo un browser alla volta può usare l'agente | Intentionale: Inventor COM non è condivisibile |
+| Nessun upload dal browser | I file vanno copiati manualmente in `input\` | Funzionalità drag-and-drop pianificata |
+| Solo `127.0.0.1` | La Web UI è accessibile solo dal PC locale | Non esporre su rete senza autenticazione |
+
+#### Fermare il server
+
+Premere **Ctrl+C** nella finestra PowerShell in cui il server è in esecuzione. Inventor rimane
+aperto anche dopo lo stop del server.
+
+---
+
 ## 10. Consigli pratici per gli ingegneri
 
 ### Nominare i parametri in Inventor
@@ -597,6 +678,12 @@ successivo.
 | Test falliti su macOS/Linux per `win32com` | Piattaforma non Windows | Normale — i test COM funzionano solo su Windows con Inventor installato |
 | `pip install` molto lento | pip standard | Usare `uv pip install` che è molto più veloce |
 | Inventor si apre ma il file non si carica | Percorso con spazi o caratteri speciali | Racchiudere il percorso tra virgolette: `python main.py extract "input\nome file.iam"` |
+| `ModuleNotFoundError: No module named 'fastapi'` | Dipendenze web non installate | Rieseguire `uv pip install -e ".[dev]"` |
+| `[Errno 10048] error while attempting to bind` | Porta 8000 già in uso | Usare `python main.py serve --port 8080` (o altro numero libero) |
+| Il browser non si apre automaticamente | Impostazioni di sistema | Aprire manualmente `http://127.0.0.1:8000` nel browser |
+| "Another session is active" nel browser | Scheda precedente ancora connessa | Chiudere tutte le schede aperte sulla Web UI e ricaricare |
+| "ANTHROPIC_API_KEY not set" nella Web UI | Chiave API mancante nel file `.env` | Configurare `ANTHROPIC_API_KEY` nel file `.env` (vedere sezione 6) |
+| L'agente non risponde nella Web UI | Connessione WebSocket interrotta | Ricaricare la pagina — la connessione si ristabilisce automaticamente |
 
 ### Risolvere l'errore post-installazione di pywin32
 
