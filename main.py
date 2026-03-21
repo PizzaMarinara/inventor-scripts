@@ -179,5 +179,22 @@ def ask(
     console.print(f"[dim]Completed in {result.iterations} iteration(s)[/dim]")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
+    port: int = typer.Option(8000, help="Port to listen on"),
+    open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser on start"),
+):
+    """Launch the web UI on localhost."""
+    import uvicorn
+    import webbrowser
+    import threading
+
+    if open_browser:
+        threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
+
+    uvicorn.run("web:app", host=host, port=port, reload=False)
+
+
 if __name__ == "__main__":
     app()
