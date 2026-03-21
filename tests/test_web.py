@@ -104,6 +104,33 @@ def test_websocket_chat_sends_events_in_order():
     assert types == ["tool_start", "tool_result", "done"]
 
 
+def test_websocket_chat_uses_claude_code_cli_when_env_set():
+    """When CLAUDE_CODE=true, ClaudeCodeCLIClient must be used instead of ClaudeLLMClient."""
+    from web import app, session_manager
+    from agent.loop import StreamEvent
+
+    session_manager.active_session = None
+
+    mock_events = [StreamEvent(type="done", content="OK via CLI.", iterations=1)]
+
+    with patch("web.AgentLoop") as MockLoop, \
+         patch("web.InventorConnection"), \
+         patch("web.ClaudeCodeCLIClient") as MockCLI, \
+         patch("web.ClaudeLLMClient") as MockAPI, \
+         patch("web.ToolExecutor"), \
+         patch.dict("os.environ", {"CLAUDE_CODE": "true"}, clear=False):
+        instance = MockLoop.return_value
+        instance.run_streaming.return_value = iter(mock_events)
+
+        client = TestClient(app)
+        with client.websocket_connect("/ws/chat") as ws:
+            ws.send_json({"type": "chat", "message": "test", "file": ""})
+            ws.receive_json()  # consume the done event
+
+    MockCLI.assert_called_once()
+    MockAPI.assert_not_called()
+
+
 def test_websocket_rejects_second_connection_when_session_active():
     from web import app, session_manager, Session
 

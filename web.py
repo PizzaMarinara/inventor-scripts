@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 
-from agent.llm import ClaudeLLMClient
+from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient
 from agent.loop import AgentLoop, StreamEvent, ToolExecutor
 from inventor_api import InventorConnection
 
@@ -134,13 +134,23 @@ async def _handle_chat(session: Session, data: dict) -> None:
     session.cancel_event.clear()
 
     try:
-        # Connect to Inventor and open the selected file
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        llm = ClaudeLLMClient(api_key=api_key) if api_key else None
-        if llm is None:
-            await session.ws.send_json({"type": "error", "message": "ANTHROPIC_API_KEY not set."})
-            session.is_running = False
-            return
+        # Select LLM backend — mirrors the same logic as main.py `ask`
+        use_claude_code = os.environ.get("CLAUDE_CODE", "false").lower() == "true"
+        if use_claude_code:
+            llm = ClaudeCodeCLIClient()
+        else:
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                await session.ws.send_json({
+                    "type": "error",
+                    "message": (
+                        "Nessun backend LLM configurato. "
+                        "Imposta CLAUDE_CODE=true oppure ANTHROPIC_API_KEY nel file .env."
+                    ),
+                })
+                session.is_running = False
+                return
+            llm = ClaudeLLMClient(api_key=api_key)
 
         conn = InventorConnection()
         conn.connect(launch_if_not_running=True)

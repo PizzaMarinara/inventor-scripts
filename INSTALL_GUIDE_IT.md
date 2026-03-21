@@ -603,8 +603,9 @@ L'interfaccia è divisa in due pannelli:
 5. L'agente elabora la richiesta, mostra i passi eseguiti e salva il risultato.
 6. Il nuovo file compare automaticamente nella lista "Outputs" — fare clic sul nome per scaricarlo.
 
-> **Nota:** la Web UI richiede che `ANTHROPIC_API_KEY` sia impostata nel file `.env`.
-> Il supporto a `CLAUDE_CODE=true` tramite Web UI è pianificato per una versione futura.
+> **Nota:** la Web UI supporta entrambe le modalità di autenticazione. Configurare nel file `.env`
+> `CLAUDE_CODE=true` (per usare Claude Code CLI) oppure `ANTHROPIC_API_KEY=sk-ant-...` (per usare
+> l'API diretta). `CLAUDE_CODE=true` ha la precedenza, esattamente come per i comandi da terminale.
 
 #### Limitazioni attuali della Web UI
 
