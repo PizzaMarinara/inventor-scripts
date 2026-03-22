@@ -116,6 +116,9 @@ class AgentLoop:
         self._llm = llm
         self._executor = executor
         self._max_iterations = max_iterations
+        # Persists the full conversation across multiple run_streaming() calls so
+        # the web UI chat has memory between user messages.
+        self._history: list[dict] = []
 
     def run_streaming(self, instruction: str) -> Iterator[StreamEvent]:
         """
@@ -126,8 +129,14 @@ class AgentLoop:
             tool_result → emitted after the tool returns (or raises)
         Final event is always `done` (or `done` with error text on max_iterations).
         Used by the web layer; also the single source of truth for run().
+
+        Conversation history from previous calls is prepended automatically so
+        the agent remembers what was discussed earlier in the same session.
         """
-        messages: list[dict] = [{"role": "user", "content": instruction}]
+        # Prepend history so the model has full context of the current session.
+        messages: list[dict] = list(self._history) + [
+            {"role": "user", "content": instruction}
+        ]
         iteration = 0
 
         while iteration < self._max_iterations:
@@ -139,6 +148,15 @@ class AgentLoop:
             )
 
             if response.stop_reason == "end_turn":
+                # Persist: add the user turn + assistant reply to history.
+                assistant_msg = (
+                    response.assistant_content
+                    if response.assistant_content
+                    else response.text
+                )
+                self._history = messages + [
+                    {"role": "assistant", "content": assistant_msg}
+                ]
                 yield StreamEvent(
                     type="done",
                     content=response.text,
@@ -185,6 +203,8 @@ class AgentLoop:
 
                 messages.append({"role": "user", "content": tool_results_block})
 
+        # Save whatever we have so the next turn still has context.
+        self._history = list(messages)
         yield StreamEvent(
             type="done",
             content=(

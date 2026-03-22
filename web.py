@@ -40,7 +40,7 @@ class Session:
     conn: InventorConnection | None = None
     doc: object | None = None
     active_file: str | None = None
-    messages: list[dict] = field(default_factory=list)
+    loop: Any | None = None          # AgentLoop reused across messages for memory
     is_running: bool = False
     cancel_event: threading.Event = field(default_factory=threading.Event)
 
@@ -181,9 +181,15 @@ async def _handle_chat(session: Session, data: dict) -> None:
             session.doc = doc
 
         executor = ToolExecutor(doc=doc, conn=conn)
-        loop = AgentLoop(llm=llm, executor=executor)
 
-        await _stream_events(session, loop, instruction)
+        # Reuse the existing AgentLoop if the file hasn't changed — this preserves
+        # conversation history so the agent remembers previous messages in the session.
+        # Recreate it only when a different file is selected (fresh context needed).
+        file_changed = file_name != session.active_file or session.loop is None
+        if file_changed:
+            session.loop = AgentLoop(llm=llm, executor=executor)
+
+        await _stream_events(session, session.loop, instruction)
 
     except Exception as exc:
         await session.ws.send_json({"type": "error", "message": str(exc)})

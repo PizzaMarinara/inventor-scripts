@@ -176,6 +176,27 @@ def test_run_streaming_max_iterations_emits_done():
     assert done_events[0].iterations == 2
 
 
+def test_history_persists_between_run_streaming_calls():
+    """Second call to run_streaming must include the first turn in the messages list."""
+    first_response = LLMResponse(stop_reason="end_turn", text="First reply.")
+    second_response = LLMResponse(stop_reason="end_turn", text="Second reply.")
+    llm = make_mock_llm([first_response, second_response])
+
+    loop = AgentLoop(llm=llm, executor=ToolExecutor(doc=make_mock_doc(), conn=MagicMock()))
+
+    list(loop.run_streaming("First message"))
+    list(loop.run_streaming("Second message"))
+
+    # The second call must pass at least 3 messages: history user, history assistant, new user
+    second_call_messages = llm.chat.call_args_list[1].kwargs["messages"]
+    roles = [m["role"] for m in second_call_messages]
+    assert roles == ["user", "assistant", "user"], (
+        f"Expected history + new user message, got: {roles}"
+    )
+    assert second_call_messages[0]["content"] == "First message"
+    assert second_call_messages[2]["content"] == "Second message"
+
+
 def test_run_delegates_to_run_streaming():
     """run() must produce the same final_text and tool audit as run_streaming()."""
     describe_response = LLMResponse(
