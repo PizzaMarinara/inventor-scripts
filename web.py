@@ -178,6 +178,8 @@ async def _handle_chat(session: Session, data: dict) -> None:
                 })
                 session.is_running = False
                 return
+            # Normalise: None → "" so comparisons work when no file is selected
+            session.active_file = ""
             session.doc = doc
 
         executor = ToolExecutor(doc=doc, conn=conn)
@@ -185,9 +187,12 @@ async def _handle_chat(session: Session, data: dict) -> None:
         # Reuse the existing AgentLoop if the file hasn't changed — this preserves
         # conversation history so the agent remembers previous messages in the session.
         # Recreate it only when a different file is selected (fresh context needed).
-        file_changed = file_name != session.active_file or session.loop is None
+        # Normalise file_name: empty string and None both mean "active document".
+        normalised_file = file_name or ""
+        file_changed = normalised_file != (session.active_file or "") or session.loop is None
         if file_changed:
             session.loop = AgentLoop(llm=llm, executor=executor)
+            session.active_file = normalised_file
 
         await _stream_events(session, session.loop, instruction)
 
