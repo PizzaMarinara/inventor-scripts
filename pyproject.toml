@@ -17,6 +17,9 @@ dev = [
     "pytest-mock>=3.14.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["agent*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]   # ensures bare imports (from utils import …) resolve from project root
 markers = [
