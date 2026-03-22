@@ -174,7 +174,12 @@ To give a final text response (no more tools needed), respond with:
 
 USER REQUEST: {last_user_msg}"""
 
-        cmd = ["claude", "-p", full_prompt, "--output-format", "text"]
+        # On Windows, npm installs a `claude.cmd` wrapper; shutil.which resolves
+        # the correct executable name via PATHEXT without needing shell=True.
+        import shutil
+        executable = shutil.which("claude") or "claude"
+
+        cmd = [executable, "-p", full_prompt, "--output-format", "text"]
         if self._model:
             cmd.extend(["--model", self._model])
 
@@ -188,8 +193,10 @@ USER REQUEST: {last_user_msg}"""
             output = proc.stdout.strip()
         except FileNotFoundError:
             raise RuntimeError(
-                "Claude Code CLI not found. Install it from https://claude.ai/code "
-                "or use ClaudeLLMClient with an ANTHROPIC_API_KEY instead."
+                "Claude Code CLI non trovato. "
+                "Installarlo con: npm install -g @anthropic-ai/claude-code\n"
+                "Dopo l'installazione riavviare PowerShell/terminale e riprovare.\n"
+                "In alternativa usare ClaudeLLMClient con ANTHROPIC_API_KEY."
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError("Claude Code CLI timed out after 120 seconds.")

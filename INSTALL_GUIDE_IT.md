@@ -319,19 +319,43 @@ Salvare e chiudere il file.
 
 ---
 
-### Opzione B — Claude Code CLI (se già installato)
+### Opzione B — Claude Code CLI
 
-Se sulla macchina è già installato **Claude Code** (il client CLI ufficiale di Anthropic),
-non è necessaria alcuna chiave API separata: l'autenticazione è già gestita dall'installazione
-esistente di Claude Code.
+**Claude Code** è il client CLI ufficiale di Anthropic. Se installato, non è necessaria
+alcuna chiave API separata: l'autenticazione è gestita direttamente da Claude Code.
 
-#### Verificare se Claude Code è installato
+#### Installare Claude Code (se non è già presente)
+
+Claude Code richiede **Node.js** (versione 18 o superiore). Scaricare e installare Node.js
+da [https://nodejs.org](https://nodejs.org) (scegliere la versione LTS).
+
+Dopo l'installazione di Node.js, aprire PowerShell come amministratore ed eseguire:
+
+```powershell
+npm install -g @anthropic-ai/claude-code
+```
+
+> **Importante:** al termine dell'installazione **chiudere e riaprire PowerShell** prima di
+> continuare. npm aggiunge la cartella dei pacchetti globali al PATH solo nelle nuove sessioni.
+
+Autenticarsi con il proprio account Anthropic:
+
+```powershell
+claude
+```
+
+Al primo avvio viene chiesto di effettuare il login tramite browser. Seguire le istruzioni.
+
+#### Verificare che Claude Code funzioni
 
 ```powershell
 claude --version
 ```
 
 Se il comando restituisce un numero di versione (ad esempio `1.x.x`), Claude Code è disponibile.
+
+> **Problema: `claude` non riconosciuto dopo l'installazione?**
+> Vedere la sezione [Troubleshooting](#11-risoluzione-problemi-comuni-troubleshooting).
 
 #### Usare Claude Code con gli script
 
@@ -679,12 +703,40 @@ successivo.
 | Test falliti su macOS/Linux per `win32com` | Piattaforma non Windows | Normale — i test COM funzionano solo su Windows con Inventor installato |
 | `pip install` molto lento | pip standard | Usare `uv pip install` che è molto più veloce |
 | Inventor si apre ma il file non si carica | Percorso con spazi o caratteri speciali | Racchiudere il percorso tra virgolette: `python main.py extract "input\nome file.iam"` |
+| `claude` non riconosciuto dopo `npm install -g` | PowerShell non aggiornato o npm non in PATH | Chiudere e riaprire PowerShell. Se persiste, eseguire `npm config get prefix` per trovare la cartella dei binari npm e aggiungerla manualmente al PATH di sistema (vedere sotto) |
 | `ModuleNotFoundError: No module named 'fastapi'` | Dipendenze web non installate | Rieseguire `uv pip install -e ".[dev]"` |
 | `[Errno 10048] error while attempting to bind` | Porta 8000 già in uso | Usare `python main.py serve --port 8080` (o altro numero libero) |
 | Il browser non si apre automaticamente | Impostazioni di sistema | Aprire manualmente `http://127.0.0.1:8000` nel browser |
 | "Another session is active" nel browser | Scheda precedente ancora connessa | Chiudere tutte le schede aperte sulla Web UI e ricaricare |
 | "ANTHROPIC_API_KEY not set" nella Web UI | Chiave API mancante nel file `.env` | Configurare `ANTHROPIC_API_KEY` nel file `.env` (vedere sezione 6) |
 | L'agente non risponde nella Web UI | Connessione WebSocket interrotta | Ricaricare la pagina — la connessione si ristabilisce automaticamente |
+
+### Risolvere: `claude` non riconosciuto dopo l'installazione
+
+Se dopo aver eseguito `npm install -g @anthropic-ai/claude-code` il comando `claude` non viene
+trovato anche in una nuova sessione di PowerShell, il problema è che la cartella dei binari
+globali di npm non è nel PATH di sistema. Per individuarla:
+
+```powershell
+npm config get prefix
+```
+
+L'output sarà qualcosa come `C:\Users\NomeUtente\AppData\Roaming\npm`.
+I file eseguibili si trovano in quella cartella (ad esempio `claude.cmd`).
+
+Per aggiungere la cartella al PATH in modo permanente:
+
+1. Premere `Win + R`, digitare `sysdm.cpl` e premere Invio.
+2. Scheda **Avanzate** → **Variabili d'ambiente**.
+3. Nella sezione *Variabili utente* selezionare `Path` e cliccare **Modifica**.
+4. Cliccare **Nuovo** e incollare il percorso ottenuto da `npm config get prefix`.
+5. Cliccare **OK** su tutte le finestre, poi chiudere e riaprire PowerShell.
+
+Verificare:
+
+```powershell
+claude --version
+```
 
 ### Risolvere l'errore post-installazione di pywin32
 
