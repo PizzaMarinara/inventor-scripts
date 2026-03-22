@@ -24,6 +24,8 @@ def test_extract_parameters_returns_named_params(mock_doc):
 def test_extract_parameters_empty_on_no_parameters():
     doc = MagicMock()
     doc.ComponentDefinition.Parameters.UserParameters.__iter__.side_effect = AttributeError
+    doc.ComponentDefinition.Parameters.ModelParameters.__iter__.side_effect = AttributeError
+    doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__.side_effect = AttributeError
     result = extract_parameters(doc)
     assert result == {}
 

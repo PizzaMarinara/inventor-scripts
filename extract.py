@@ -56,7 +56,7 @@ def extract_parameters(doc: object) -> dict[str, dict[str, Any]]:
                         "type":    type_tag,
                     }
             except Exception:
-                pass  # collection absent for this doc type — skip silently
+                pass  # attribute absent or collection unreadable for this doc type — skip silently
     except Exception:
         pass
     return result
