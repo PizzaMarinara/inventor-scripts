@@ -29,3 +29,62 @@ def test_describe_model_notes_empty_bom(mock_doc):
     result = describe_model(mock_doc)
     # Mock doc has no BOM rows — should note that
     assert "BOM" in result or "assembly" in result.lower() or "No BOM" in result
+
+
+def test_describe_model_labels_user_parameters(mock_doc):
+    result = describe_model(mock_doc)
+    assert "[user" in result
+
+
+def test_describe_model_shows_parameter_count_breakdown():
+    from tests.conftest import make_mock_parameter, make_mock_doc
+    doc = make_mock_doc(
+        parameters=[make_mock_parameter("Length", "100 mm", "mm")],
+        model_parameters=[make_mock_parameter("d0", "25 mm", "mm")],
+        reference_parameters=[make_mock_parameter("Volume", "1000 mm3", "mm3")],
+    )
+    result = describe_model(doc)
+    assert "1 user" in result
+    assert "1 model" in result
+    assert "1 reference" in result
+
+
+def test_describe_model_marks_reference_params_as_read_only():
+    from tests.conftest import make_mock_parameter, make_mock_doc
+    doc = make_mock_doc(
+        parameters=[],
+        reference_parameters=[make_mock_parameter("FaceArea", "5000 mm2", "mm2")],
+    )
+    result = describe_model(doc)
+    assert "FaceArea" in result
+    assert "read-only" in result.lower()
+
+
+def test_describe_model_shows_parameters_none_found_when_empty():
+    from tests.conftest import make_mock_doc
+    doc = make_mock_doc(parameters=[], model_parameters=[], reference_parameters=[])
+    result = describe_model(doc)
+    assert "PARAMETERS: none found" in result
+
+
+def test_describe_model_includes_occurrences_for_assembly():
+    from tests.conftest import make_mock_occurrence, make_mock_assembly_doc
+    occ = make_mock_occurrence("maincyl:1", "Cylinder_Main", "C:/models/maincyl.ipt")
+    doc = make_mock_assembly_doc(occurrences=[occ])
+    result = describe_model(doc)
+    assert "maincyl:1" in result
+    assert "OCCURRENCES" in result
+
+
+def test_describe_model_no_occurrences_section_for_part(mock_doc):
+    """A plain part document should not have an OCCURRENCES section."""
+    result = describe_model(mock_doc)
+    assert "OCCURRENCES" not in result
+
+
+def test_describe_model_occurrences_show_suppressed_state():
+    from tests.conftest import make_mock_occurrence, make_mock_assembly_doc
+    occ = make_mock_occurrence("lid:1", "Lid", "C:/lid.ipt", suppressed=True)
+    doc = make_mock_assembly_doc(occurrences=[occ])
+    result = describe_model(doc)
+    assert "suppressed=True" in result

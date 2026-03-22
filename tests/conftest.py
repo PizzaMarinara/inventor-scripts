@@ -51,9 +51,57 @@ def make_mock_bom_row(item_number: str, part_name: str, quantity: int) -> MagicM
     return row
 
 
+def make_mock_occurrence(
+    occurrence_name: str,
+    component_name: str,
+    file_path: str,
+    suppressed: bool = False,
+    translation_cm: tuple = (0.0, 0.0, 0.0),
+) -> MagicMock:
+    """
+    Build a mock ComponentOccurrence.
+
+    translation_cm is in Inventor's internal unit (centimetres).
+    extract_occurrences multiplies by 10 to return mm.
+    """
+    occ = MagicMock()
+    occ.Name = occurrence_name
+
+    # ComponentDefinition.DisplayName
+    occ.Definition.DisplayName = component_name
+
+    # ReferencedDocumentDescriptor — works even when sub-doc is not loaded
+    occ.ReferencedDocumentDescriptor.FullDocumentName = file_path
+
+    # Suppression state
+    occ.Suppressed = suppressed
+
+    # Transformation matrix → Translation point (in cm)
+    pt = MagicMock()
+    pt.X, pt.Y, pt.Z = translation_cm
+    occ.Transformation.Translation = pt
+
+    return occ
+
+
+def make_mock_assembly_doc(occurrences: list | None = None, **kwargs) -> MagicMock:
+    """
+    Build a mock assembly document with an Occurrences collection.
+    All extra kwargs are forwarded to make_mock_doc.
+    """
+    doc = make_mock_doc(doc_type="iam", **kwargs)
+    occs = occurrences or []
+    doc.ComponentDefinition.Occurrences.__iter__ = MagicMock(
+        side_effect=lambda o=occs: iter(o)
+    )
+    return doc
+
+
 def make_mock_doc(
     doc_type: str = "ipt",
     parameters: list | None = None,
+    model_parameters: list | None = None,
+    reference_parameters: list | None = None,
     bom_rows: list | None = None,
 ) -> MagicMock:
     """Build a mock Inventor document object."""
@@ -71,13 +119,22 @@ def make_mock_doc(
     doc.PropertySets.__iter__ = MagicMock(side_effect=lambda: iter([prop_set]))
 
     # ── Parameters ───────────────────────────────────────────────────────────
-    params = parameters or [
+    user_params = parameters if parameters is not None else [
         make_mock_parameter("Width", "100 mm", "mm"),
         make_mock_parameter("Height", "50 mm", "mm"),
         make_mock_parameter("CylinderLength", "200 mm", "mm", "Main cylinder body"),
     ]
+    model_params = model_parameters if model_parameters is not None else []
+    ref_params = reference_parameters if reference_parameters is not None else []
+
     doc.ComponentDefinition.Parameters.UserParameters.__iter__ = MagicMock(
-        side_effect=lambda p=params: iter(p)
+        side_effect=lambda p=user_params: iter(p)
+    )
+    doc.ComponentDefinition.Parameters.ModelParameters.__iter__ = MagicMock(
+        side_effect=lambda p=model_params: iter(p)
+    )
+    doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__ = MagicMock(
+        side_effect=lambda p=ref_params: iter(p)
     )
 
     # ── BOM (empty by default; pass bom_rows to populate) ────────────────────

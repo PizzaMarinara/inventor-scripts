@@ -15,9 +15,9 @@ def describe_model(doc: object) -> str:
 
     The output is plain text, structured for easy parsing by an LLM:
     - File info
-    - Document type hint
-    - All parameters with value, unit, comment
-    - BOM summary (if assembly)
+    - All parameters (user, model, reference) with type labels
+    - BOM summary (for assemblies)
+    - Occurrences list (for assemblies)
     - Key properties
     """
     data = extract_all(doc)
@@ -30,12 +30,34 @@ def describe_model(doc: object) -> str:
     # ── Parameters ──────────────────────────────────────────────────────────
     params = data["parameters"]
     if params:
-        lines.append(f"USER PARAMETERS ({len(params)} total):")
+        by_type: dict[str, list] = {"user": [], "model": [], "reference": []}
         for name, info in params.items():
-            comment = f"  # {info['comment']}" if info.get("comment") else ""
-            lines.append(f"  {name} = {info['value']}  [{info['units']}]{comment}")
+            by_type[info.get("type", "user")].append((name, info))
+
+        counts = {t: len(v) for t, v in by_type.items()}
+        total = len(params)
+        breakdown = (
+            f"{counts['user']} user, {counts['model']} model, "
+            f"{counts['reference']} reference"
+        )
+        lines.append(f"PARAMETERS ({total} total — {breakdown}):")
+
+        for type_tag in ("user", "model", "reference"):
+            for name, info in by_type[type_tag]:
+                ro = "  (read-only)" if type_tag == "reference" else ""
+                comment = f"  # {info['comment']}" if info.get("comment") else ""
+                lines.append(
+                    f"  [{type_tag:<9}] {name} = {info['value']}  "
+                    f"[{info['units']}]{ro}{comment}"
+                )
+
+        lines.append(
+            "NOTE: Reference parameters are read-only. "
+            "Use exact names (case-sensitive) with set_parameter. "
+            "Model parameters (d0, d1, …) are writable."
+        )
     else:
-        lines.append("USER PARAMETERS: none found")
+        lines.append("PARAMETERS: none found")
     lines.append("")
 
     # ── BOM ─────────────────────────────────────────────────────────────────
@@ -50,6 +72,24 @@ def describe_model(doc: object) -> str:
     else:
         lines.append("BOM: No BOM data (not an assembly, or BOM is empty)")
     lines.append("")
+
+    # ── Occurrences (assembly only) ──────────────────────────────────────────
+    occurrences = data.get("occurrences", [])
+    if occurrences:
+        lines.append(f"OCCURRENCES ({len(occurrences)} total):")
+        for occ in occurrences:
+            pos = occ["translation_mm"]
+            pos_str = f"[{pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f} mm]"
+            lines.append(
+                f"  {occ['occurrence_name']:<20} [{occ['file_path']}]"
+                f"  pos={pos_str}  suppressed={occ['suppressed']}"
+            )
+        lines.append(
+            "NOTE: Occurrence names (e.g. \"maincyl:1\") are required by occurrence tools. "
+            "Parameters above are assembly-level only. "
+            "Use get_occurrence_parameters to inspect a sub-component's parameters."
+        )
+        lines.append("")
 
     # ── Properties ──────────────────────────────────────────────────────────
     properties = data["properties"]
