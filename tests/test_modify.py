@@ -19,6 +19,8 @@ def test_set_parameter_updates_expression():
 def test_set_parameter_raises_on_unknown_param():
     doc = MagicMock()
     doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ReferenceParameters.Item.side_effect = Exception("not found")
     with pytest.raises(ValueError, match="Parameter 'NoSuchParam' not found"):
         set_parameter(doc, "NoSuchParam", "10 mm")
 
@@ -41,6 +43,8 @@ def test_set_parameters_batch_applies_all():
 def test_set_parameters_batch_collects_errors():
     doc = MagicMock()
     doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ReferenceParameters.Item.side_effect = Exception("not found")
     results = set_parameters_batch(doc, {"Bad": "1 mm"}, raise_on_error=False)
     assert results[0]["error"] is not None
 
@@ -61,3 +65,136 @@ def test_open_in_inventor_calls_open():
     result = open_in_inventor(mock_conn, "/output/modified.ipt")
     mock_conn.open_document.assert_called_once_with("/output/modified.ipt")
     assert result is mock_doc
+
+
+def test_set_parameter_finds_model_param_when_user_absent():
+    """If the param is not in UserParameters but is in ModelParameters, it should be found."""
+    param = make_mock_parameter("d0", "500 mm", "mm")
+    doc = MagicMock()
+    doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ModelParameters.Item.return_value = param
+    result = set_parameter(doc, "d0", "700 mm")
+    assert result["old_value"] == "500 mm"
+    assert result["new_value"] == "700 mm"
+    assert param.Expression == "700 mm"
+
+
+def test_set_parameter_raises_descriptive_error_on_reference_param():
+    """Attempting to write a ReferenceParameter should raise with a clear message."""
+    ref_param = make_mock_parameter("FaceArea", "5026 mm2", "mm2")
+    doc = MagicMock()
+    doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("not found")
+    doc.ComponentDefinition.Parameters.ReferenceParameters.Item.return_value = ref_param
+    with pytest.raises(ValueError, match="read-only reference parameter"):
+        set_parameter(doc, "FaceArea", "9999 mm2")
+
+
+# ─── Task 5a: _get_or_open_sub_doc ───────────────────────────────────────────
+
+def test_get_or_open_sub_doc_returns_loaded_doc():
+    """When sub-doc is already loaded, return it directly."""
+    from modify import _get_or_open_sub_doc
+    occ = MagicMock()
+    sub_doc = MagicMock()
+    occ.Definition.Document = sub_doc
+    app = MagicMock()
+    result = _get_or_open_sub_doc(occ, app)
+    assert result is sub_doc
+    app.Documents.Open.assert_not_called()
+
+
+def test_get_or_open_sub_doc_opens_when_unloaded():
+    """When occ.Definition.Document raises, fall back to app.Documents.Open."""
+    from modify import _get_or_open_sub_doc
+    occ = MagicMock()
+    # Make accessing .Document raise (simulates unloaded sub-doc)
+    type(occ.Definition).Document = property(lambda self: (_ for _ in ()).throw(Exception("unloaded")))
+    occ.ReferencedDocumentDescriptor.FullDocumentName = "C:/models/part.ipt"
+    opened_doc = MagicMock()
+    app = MagicMock()
+    app.Documents.Open.return_value = opened_doc
+    result = _get_or_open_sub_doc(occ, app)
+    app.Documents.Open.assert_called_once_with("C:/models/part.ipt")
+    assert result is opened_doc
+
+
+# ─── Task 5b: add_component ──────────────────────────────────────────────────
+
+def test_add_component_at_origin():
+    from modify import add_component
+    doc = MagicMock()
+    app = MagicMock()
+    new_occ = MagicMock()
+    new_occ.Name = "bracket:1"
+    doc.ComponentDefinition.Occurrences.Add.return_value = new_occ
+    result = add_component(doc, app, "C:/parts/bracket.ipt")
+    doc.ComponentDefinition.Occurrences.Add.assert_called_once()
+    assert result["occurrence_name"] == "bracket:1"
+    assert result["file_path"] == "C:/parts/bracket.ipt"
+
+
+def test_add_component_creates_point_not_vector_for_translation():
+    """SetTranslation takes a Point — verify CreatePoint is called, not CreateVector."""
+    from modify import add_component
+    doc = MagicMock()
+    app = MagicMock()
+    tg = app.TransientGeometry
+    new_occ = MagicMock()
+    new_occ.Name = "p:1"
+    doc.ComponentDefinition.Occurrences.Add.return_value = new_occ
+    add_component(doc, app, "C:/p.ipt", translation_mm=[10.0, 20.0, 30.0])
+    # CreatePoint must be called with values converted to cm (÷ 10)
+    tg.CreatePoint.assert_called_once_with(1.0, 2.0, 3.0)
+    tg.CreateVector.assert_not_called()
+
+
+# ─── Task 5c: remove_component ───────────────────────────────────────────────
+
+def test_remove_component_calls_delete():
+    from modify import remove_component
+    occ = MagicMock()
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.ItemByName.return_value = occ
+    result = remove_component(doc, "maincyl:1")
+    doc.ComponentDefinition.Occurrences.ItemByName.assert_called_once_with("maincyl:1")
+    occ.Delete.assert_called_once()
+    assert result == {"removed": "maincyl:1"}
+
+
+def test_remove_component_raises_on_not_found():
+    from modify import remove_component
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.ItemByName.side_effect = Exception("not found")
+    with pytest.raises(ValueError, match="maincyl:99"):
+        remove_component(doc, "maincyl:99")
+
+
+# ─── Task 5d: set_suppressed ─────────────────────────────────────────────────
+
+def test_set_suppressed_true():
+    from modify import set_suppressed
+    occ = MagicMock()
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.ItemByName.return_value = occ
+    result = set_suppressed(doc, "lid:1", True)
+    assert occ.Suppressed is True
+    assert result == {"occurrence_name": "lid:1", "suppressed": True}
+
+
+def test_set_suppressed_false():
+    from modify import set_suppressed
+    occ = MagicMock()
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.ItemByName.return_value = occ
+    result = set_suppressed(doc, "lid:1", False)
+    assert occ.Suppressed is False
+    assert result == {"occurrence_name": "lid:1", "suppressed": False}
+
+
+def test_set_suppressed_raises_on_not_found():
+    from modify import set_suppressed
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.ItemByName.side_effect = Exception("not found")
+    with pytest.raises(ValueError, match="lid:99"):
+        set_suppressed(doc, "lid:99", True)
