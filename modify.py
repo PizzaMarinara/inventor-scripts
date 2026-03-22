@@ -124,3 +124,111 @@ def open_in_inventor(conn: object, file_path: str | Path) -> object:
         Opened Document object
     """
     return conn.open_document(str(file_path))
+
+
+def _get_or_open_sub_doc(occ: object, app: object) -> object:
+    """
+    Return the sub-document for a ComponentOccurrence.
+
+    Inventor only exposes occ.Definition.Document when the sub-document is
+    loaded in memory. If it is unresolved (e.g. Level of Detail = Substitute,
+    or file offline), this property raises a COM exception. In that case,
+    open the file explicitly via app.Documents.Open().
+
+    Args:
+        occ: ComponentOccurrence COM object
+        app: Inventor Application COM object (available as conn.app in ToolExecutor)
+
+    Returns:
+        The sub-document COM object, loaded if necessary
+    """
+    try:
+        return occ.Definition.Document
+    except Exception:
+        sub_path = occ.ReferencedDocumentDescriptor.FullDocumentName
+        return app.Documents.Open(str(sub_path))
+
+
+def add_component(
+    doc: object,
+    app: object,
+    file_path: str,
+    translation_mm: list[float] | None = None,
+) -> dict[str, Any]:
+    """
+    Add a .ipt or .iam file as a new occurrence in an assembly.
+
+    The occurrence name is assigned automatically by Inventor (e.g. "bracket:1").
+    Rotation is not supported in this phase — use identity matrix only.
+
+    Args:
+        doc:            Open assembly document object
+        app:            Inventor Application object (for TransientGeometry)
+        file_path:      Absolute path to the .ipt or .iam file to insert
+        translation_mm: Optional [x, y, z] offset from assembly origin in mm.
+                        Inventor's internal unit is cm, so values are divided by 10.
+
+    Returns:
+        Dict with occurrence_name and file_path
+
+    Note: Matrix.SetTranslation requires a Point (tg.CreatePoint), NOT a Vector
+    (tg.CreateVector). Passing a Vector raises a COM type error at runtime.
+    """
+    tg = app.TransientGeometry
+    matrix = tg.CreateMatrix()  # identity matrix
+    if translation_mm:
+        x, y, z = translation_mm
+        pt = tg.CreatePoint(x / 10, y / 10, z / 10)  # mm → cm
+        matrix.SetTranslation(pt)
+    occ = doc.ComponentDefinition.Occurrences.Add(str(file_path), matrix)
+    return {"occurrence_name": occ.Name, "file_path": str(file_path)}
+
+
+def remove_component(doc: object, occurrence_name: str) -> dict[str, Any]:
+    """
+    Permanently delete an occurrence from an assembly.
+
+    Irreversible. The agent should confirm intent before calling this.
+
+    Args:
+        doc:             Open assembly document object
+        occurrence_name: Full occurrence name including :N suffix, e.g. "maincyl:1"
+
+    Returns:
+        Dict with {"removed": occurrence_name}
+
+    Raises:
+        ValueError: If occurrence_name is not found in the assembly
+    """
+    try:
+        occ = doc.ComponentDefinition.Occurrences.ItemByName(occurrence_name)
+    except Exception:
+        raise ValueError(f"Occurrence '{occurrence_name}' not found in assembly")
+    occ.Delete()
+    return {"removed": occurrence_name}
+
+
+def set_suppressed(doc: object, occurrence_name: str, suppressed: bool) -> dict[str, Any]:
+    """
+    Suppress or unsuppress a component occurrence.
+
+    Suppressed occurrences are invisible and excluded from BOM and mass calculations.
+    Fully reversible — use suppressed=False to restore.
+
+    Args:
+        doc:             Open assembly document object
+        occurrence_name: Full occurrence name, e.g. "maincyl:1"
+        suppressed:      True to suppress, False to unsuppress
+
+    Returns:
+        Dict with occurrence_name and suppressed state
+
+    Raises:
+        ValueError: If occurrence_name is not found in the assembly
+    """
+    try:
+        occ = doc.ComponentDefinition.Occurrences.ItemByName(occurrence_name)
+    except Exception:
+        raise ValueError(f"Occurrence '{occurrence_name}' not found in assembly")
+    occ.Suppressed = suppressed
+    return {"occurrence_name": occurrence_name, "suppressed": suppressed}
