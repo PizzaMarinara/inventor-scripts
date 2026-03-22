@@ -94,6 +94,42 @@ def extract_bom(doc: object) -> list[dict[str, Any]]:
     return rows
 
 
+def extract_occurrences(doc: object) -> list[dict[str, Any]]:
+    """
+    Extract all component occurrences from an .iam assembly document.
+
+    Returns a flat list — one entry per placement (unlike BOM, which groups
+    by component definition). Returns [] for part documents or any doc that
+    does not expose an Occurrences collection.
+
+    Each entry:
+        occurrence_name  — Inventor-assigned name, e.g. "maincyl:1"
+        component_name   — Display name of the component definition
+        file_path        — Full path to the sub-document (works even if unloaded)
+        suppressed       — bool
+        translation_mm   — [x, y, z] offset from assembly origin in mm
+                           (Inventor stores internally in cm; multiplied by 10 here)
+    """
+    result: list[dict] = []
+    try:
+        for occ in doc.ComponentDefinition.Occurrences:
+            try:
+                pt = occ.Transformation.Translation
+                translation_mm = [pt.X * 10, pt.Y * 10, pt.Z * 10]
+                result.append({
+                    "occurrence_name": occ.Name,
+                    "component_name":  occ.Definition.DisplayName,
+                    "file_path":       occ.ReferencedDocumentDescriptor.FullDocumentName,
+                    "suppressed":      occ.Suppressed,
+                    "translation_mm":  translation_mm,
+                })
+            except Exception:
+                pass  # skip malformed occurrences
+    except Exception:
+        pass  # not an assembly, or Occurrences collection absent
+    return result
+
+
 def extract_all(doc: object) -> dict[str, Any]:
     """Run all extractors and return a single consolidated dict."""
     return {
@@ -102,4 +138,5 @@ def extract_all(doc: object) -> dict[str, Any]:
         "properties": extract_properties(doc),
         "parameters": extract_parameters(doc),
         "bom": extract_bom(doc),
+        "occurrences": extract_occurrences(doc),
     }

@@ -1,8 +1,14 @@
 # tests/test_extract.py
 from unittest.mock import MagicMock
 import pytest
-from tests.conftest import make_mock_doc, make_mock_parameter, make_mock_bom_row
-from extract import extract_properties, extract_parameters, extract_bom, extract_all
+from tests.conftest import (
+    make_mock_doc,
+    make_mock_parameter,
+    make_mock_bom_row,
+    make_mock_occurrence,
+    make_mock_assembly_doc,
+)
+from extract import extract_properties, extract_parameters, extract_bom, extract_occurrences, extract_all
 
 
 def test_extract_properties_returns_dict(mock_doc):
@@ -53,9 +59,11 @@ def test_extract_all_returns_full_structure(mock_doc):
     assert "properties" in result
     assert "parameters" in result
     assert "bom" in result
+    assert "occurrences" in result
     assert "source_file" in result
     assert isinstance(result["parameters"], dict)
     assert isinstance(result["bom"], list)
+    assert isinstance(result["occurrences"], list)
 
 
 def test_extract_parameters_includes_type_field(mock_doc):
@@ -110,3 +118,43 @@ def test_extract_parameters_empty_when_all_collections_absent():
     doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__.side_effect = Exception
     result = extract_parameters(doc)
     assert result == {}
+
+
+def test_extract_occurrences_returns_flat_list():
+    occ1 = make_mock_occurrence("maincyl:1", "Cylinder_Main", "C:/models/maincyl.ipt")
+    occ2 = make_mock_occurrence("base:1", "Baseplate", "C:/models/base.ipt")
+    doc = make_mock_assembly_doc(occurrences=[occ1, occ2])
+    result = extract_occurrences(doc)
+    assert len(result) == 2
+    assert result[0]["occurrence_name"] == "maincyl:1"
+    assert result[0]["component_name"] == "Cylinder_Main"
+    assert result[0]["file_path"] == "C:/models/maincyl.ipt"
+    assert result[0]["suppressed"] is False
+
+
+def test_extract_occurrences_converts_cm_to_mm():
+    occ = make_mock_occurrence("part:1", "Part", "C:/p.ipt", translation_cm=(1.0, 2.0, 3.0))
+    doc = make_mock_assembly_doc(occurrences=[occ])
+    result = extract_occurrences(doc)
+    assert result[0]["translation_mm"] == [10.0, 20.0, 30.0]
+
+
+def test_extract_occurrences_includes_suppressed_flag():
+    occ = make_mock_occurrence("lid:1", "Lid", "C:/lid.ipt", suppressed=True)
+    doc = make_mock_assembly_doc(occurrences=[occ])
+    result = extract_occurrences(doc)
+    assert result[0]["suppressed"] is True
+
+
+def test_extract_occurrences_returns_empty_for_non_assembly():
+    """A part document does not have an Occurrences collection — return []."""
+    doc = MagicMock()
+    doc.ComponentDefinition.Occurrences.__iter__.side_effect = Exception("no Occurrences")
+    result = extract_occurrences(doc)
+    assert result == []
+
+
+def test_extract_occurrences_returns_empty_for_zero_occurrences():
+    doc = make_mock_assembly_doc(occurrences=[])
+    result = extract_occurrences(doc)
+    assert result == []
