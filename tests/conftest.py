@@ -54,6 +54,8 @@ def make_mock_bom_row(item_number: str, part_name: str, quantity: int) -> MagicM
 def make_mock_doc(
     doc_type: str = "ipt",
     parameters: list | None = None,
+    model_parameters: list | None = None,
+    reference_parameters: list | None = None,
     bom_rows: list | None = None,
 ) -> MagicMock:
     """Build a mock Inventor document object."""
@@ -71,13 +73,22 @@ def make_mock_doc(
     doc.PropertySets.__iter__ = MagicMock(side_effect=lambda: iter([prop_set]))
 
     # ── Parameters ───────────────────────────────────────────────────────────
-    params = parameters or [
+    user_params = parameters if parameters is not None else [
         make_mock_parameter("Width", "100 mm", "mm"),
         make_mock_parameter("Height", "50 mm", "mm"),
         make_mock_parameter("CylinderLength", "200 mm", "mm", "Main cylinder body"),
     ]
+    model_params = model_parameters if model_parameters is not None else []
+    ref_params = reference_parameters if reference_parameters is not None else []
+
     doc.ComponentDefinition.Parameters.UserParameters.__iter__ = MagicMock(
-        side_effect=lambda p=params: iter(p)
+        side_effect=lambda p=user_params: iter(p)
+    )
+    doc.ComponentDefinition.Parameters.ModelParameters.__iter__ = MagicMock(
+        side_effect=lambda p=model_params: iter(p)
+    )
+    doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__ = MagicMock(
+        side_effect=lambda p=ref_params: iter(p)
     )
 
     # ── BOM (empty by default; pass bom_rows to populate) ────────────────────
