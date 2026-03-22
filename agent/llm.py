@@ -190,7 +190,6 @@ USER REQUEST: {last_user_msg}"""
                 text=True,
                 timeout=120,
             )
-            output = proc.stdout.strip()
         except FileNotFoundError:
             raise RuntimeError(
                 "Claude Code CLI non trovato. "
@@ -200,6 +199,20 @@ USER REQUEST: {last_user_msg}"""
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError("Claude Code CLI timed out after 120 seconds.")
+
+        # Surface stderr / non-zero exit as a clear RuntimeError so callers
+        # (web UI, CLI) can display the real message from the Claude Code CLI
+        # (e.g. "Invalid API key", "Not authenticated", etc.)
+        if proc.returncode != 0:
+            detail = (proc.stderr.strip() or proc.stdout.strip() or
+                      f"exit code {proc.returncode}")
+            hint = ""
+            lc = detail.lower()
+            if "api key" in lc or "unauthorized" in lc or "authentication" in lc or "login" in lc:
+                hint = "\n→ Esegui 'claude' nel terminale per ri-autenticarti."
+            raise RuntimeError(f"Claude Code CLI error: {detail}{hint}")
+
+        output = proc.stdout.strip()
 
         # Parse JSON response from Claude
         try:

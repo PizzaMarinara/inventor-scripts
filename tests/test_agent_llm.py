@@ -84,3 +84,29 @@ def test_claude_code_cli_parses_text_response():
         result = client.chat(messages=[{"role": "user", "content": "hello"}], tools=[])
     assert result.stop_reason == "end_turn"
     assert result.text == "Done."
+
+
+def test_claude_code_cli_raises_on_nonzero_exit():
+    """Non-zero exit code surfaces stderr as RuntimeError with the raw CLI message."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            stdout="",
+            stderr="Invalid API key - Fix external API key",
+            returncode=1,
+        )
+        client = ClaudeCodeCLIClient()
+        with pytest.raises(RuntimeError, match="Invalid API key"):
+            client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
+
+
+def test_claude_code_cli_hint_on_auth_error():
+    """Auth-related stderr includes a re-authentication hint."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(
+            stdout="",
+            stderr="unauthorized: api key invalid",
+            returncode=1,
+        )
+        client = ClaudeCodeCLIClient()
+        with pytest.raises(RuntimeError, match="ri-autenticarti"):
+            client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
