@@ -86,6 +86,33 @@ def test_claude_code_cli_parses_text_response():
     assert result.text == "Done."
 
 
+def test_claude_code_cli_includes_tool_results_in_prompt():
+    """Tool result content must appear verbatim in the prompt — not as a placeholder."""
+    import json
+    fake_text = json.dumps({"action": "text", "content": "Done."})
+    captured = {}
+
+    def fake_run(cmd, *, input, **kwargs):
+        captured["prompt"] = input
+        return MagicMock(stdout=fake_text, stderr="", returncode=0)
+
+    messages = [
+        {"role": "user", "content": "describe this"},
+        {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "describe_model", "input": {}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1",
+                                       "content": "=== Inventor Document: assembly.iam ===\nParameters: Width=100"}]},
+    ]
+
+    with patch("subprocess.run", side_effect=fake_run):
+        client = ClaudeCodeCLIClient()
+        client.chat(messages=messages, tools=[])
+
+    prompt = captured["prompt"]
+    assert "assembly.iam" in prompt, "Tool result content must be in prompt"
+    assert "Width=100" in prompt, "Tool result details must be in prompt"
+    assert "[Previous tool results received]" not in prompt, "Old placeholder must not appear"
+
+
 def test_claude_code_cli_raises_on_nonzero_exit():
     """Non-zero exit code surfaces stderr as RuntimeError with the raw CLI message."""
     with patch("subprocess.run") as mock_run:

@@ -146,33 +146,60 @@ class ClaudeCodeCLIClient:
         import subprocess
         import json as _json
 
-        # Build prompt: embed tool schemas + history + last user message
         tool_schema_str = _json.dumps(tools, indent=2) if tools else "[]"
 
-        # Extract just the last user message for the prompt
-        last_user_msg = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                content = msg["content"]
-                if isinstance(content, str):
-                    last_user_msg = content
-                elif isinstance(content, list):
-                    # tool_result blocks — summarize
-                    last_user_msg = "[Previous tool results received]"
-                break
+        # Serialize the full conversation so Claude has complete context: user turns,
+        # assistant tool calls, and — critically — the actual tool result content.
+        def _serialize_messages(msgs: list[dict]) -> str:
+            parts: list[str] = []
+            for msg in msgs:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+
+                if role == "user":
+                    if isinstance(content, str):
+                        parts.append(f"USER: {content}")
+                    elif isinstance(content, list):
+                        # tool_result blocks — include the actual content
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "tool_result":
+                                parts.append(f"TOOL RESULT:\n{block.get('content', '')}")
+
+                elif role == "assistant":
+                    if isinstance(content, str) and content:
+                        parts.append(f"ASSISTANT: {content}")
+                    elif isinstance(content, list):
+                        for block in content:
+                            if not isinstance(block, dict):
+                                continue
+                            btype = block.get("type")
+                            if btype == "text" and block.get("text"):
+                                parts.append(f"ASSISTANT: {block['text']}")
+                            elif btype == "tool_use":
+                                # Native API tool call block — represent as text
+                                parts.append(
+                                    f"ASSISTANT called tool '{block.get('name')}' "
+                                    f"with: {_json.dumps(block.get('input', {}))}"
+                                )
+            return "\n\n".join(parts)
+
+        conversation = _serialize_messages(messages)
 
         full_prompt = f"""{system}
 
 AVAILABLE TOOLS (JSON schemas):
 {tool_schema_str}
 
-To call a tool, respond with ONLY a JSON object in this format:
+To call a tool, respond with ONLY a JSON object in this exact format (no other text):
 {{"action": "tool_use", "tool": "<tool_name>", "input": {{...}}, "id": "t1"}}
 
-To give a final text response (no more tools needed), respond with:
+To give a final text response (no more tools needed), respond with ONLY:
 {{"action": "text", "content": "<your response>"}}
 
-USER REQUEST: {last_user_msg}"""
+CONVERSATION SO FAR:
+{conversation}
+
+Your response (JSON only):"""
 
         # On Windows, npm installs a `claude.cmd` wrapper; shutil.which resolves
         # the correct executable name via PATHEXT without needing shell=True.
