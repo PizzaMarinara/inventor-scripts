@@ -88,6 +88,8 @@ def test_agent_loop_continues_after_tool_error():
 
     mock_doc = make_mock_doc()
     mock_doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("param not found")
+    mock_doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("param not found")
+    mock_doc.ComponentDefinition.Parameters.ReferenceParameters.Item.side_effect = Exception("param not found")
 
     executor = ToolExecutor(doc=mock_doc, conn=MagicMock())
     loop = AgentLoop(llm=llm, executor=executor)
@@ -149,6 +151,8 @@ def test_run_streaming_emits_error_event_on_tool_exception():
 
     mock_doc = make_mock_doc()
     mock_doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
+    mock_doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("not found")
+    mock_doc.ComponentDefinition.Parameters.ReferenceParameters.Item.side_effect = Exception("not found")
     loop = AgentLoop(llm=llm, executor=ToolExecutor(doc=mock_doc, conn=MagicMock()))
 
     events = list(loop.run_streaming("set Ghost to 1 mm"))
