@@ -9,5 +9,5 @@ output/
 *.ipn
 
 .claude/
-docs/.worktrees/
+docs/
 .worktrees/
