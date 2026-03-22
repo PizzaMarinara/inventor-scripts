@@ -39,8 +39,9 @@ TOOLS: list[dict] = [
         "name": ToolName.DESCRIBE_MODEL,
         "description": (
             "Get a full semantic summary of the currently open Inventor document. "
-            "Returns file name, document type (.ipt/.iam/.ipn), all user parameters "
-            "with names/values/units/comments, BOM summary (for assemblies), and "
+            "Returns file name, document type (.ipt/.iam/.ipn), all parameters "
+            "(user, model, reference) with names/values/units/type labels, "
+            "BOM summary and occurrences list (for assemblies), and "
             "document properties. ALWAYS call this first before making any changes "
             "so you understand what you are working with."
         ),
@@ -52,7 +53,7 @@ TOOLS: list[dict] = [
     },
     {
         "name": ToolName.GET_PARAMETERS,
-        "description": "Get all user parameters from the open document as a name→value dict.",
+        "description": "Get all parameters (user, model, reference) from the open document as a name→value dict with type tags.",
         "input_schema": {
             "type": "object",
             "properties": {},
