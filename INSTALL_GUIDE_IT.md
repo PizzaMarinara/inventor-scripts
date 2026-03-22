@@ -235,9 +235,11 @@ Dopo la creazione del venv, **attivarlo** con:
 Il prompt di PowerShell mostrerà `(.venv)` all'inizio per confermare che l'ambiente è attivo.
 Tutti i comandi `python` e `pytest` usati da questo momento faranno riferimento al venv.
 
-> **Importante:** il venv va riattivato ogni volta che si apre una nuova finestra di PowerShell.
-> In alternativa, si può usare il prefisso `uv run` davanti a ogni comando (es. `uv run pytest`,
-> `uv run python main.py ...`) senza bisogno di attivarlo manualmente.
+> ⚠️ **Importante — errori "No module named X":** quasi tutti i `ModuleNotFoundError` che
+> si possono incontrare sono causati dal venv non attivo. Il venv va riattivato ogni volta
+> che si apre una nuova finestra di PowerShell con `.venv\Scripts\activate`.
+> In alternativa, si può usare il prefisso `uv run` davanti a ogni comando
+> (es. `uv run pytest`, `uv run python main.py ...`) senza bisogno di attivarlo manualmente.
 
 **Alternativa con pip (senza uv):**
 
@@ -726,7 +728,9 @@ successivo.
 | `pip install` molto lento | pip standard | Usare `uv pip install` che è molto più veloce |
 | Inventor si apre ma il file non si carica | Percorso con spazi o caratteri speciali | Racchiudere il percorso tra virgolette: `python main.py extract "input\nome file.iam"` |
 | `claude` non riconosciuto dopo `npm install -g` | PowerShell non aggiornato o npm non in PATH | Chiudere e riaprire PowerShell. Se persiste, eseguire `npm config get prefix` per trovare la cartella dei binari npm e aggiungerla manualmente al PATH di sistema (vedere sotto) |
-| `ModuleNotFoundError: No module named 'fastapi'` | Dipendenze web non installate | Rieseguire `uv pip install -e ".[dev]"` |
+| `ModuleNotFoundError: No module named 'dotenv'` | Venv non attivo | Eseguire `.venv\Scripts\activate` oppure usare `uv run python main.py ...` |
+| `ModuleNotFoundError: No module named 'fastapi'` | Venv non attivo o dipendenze web non installate | Attivare il venv (`.venv\Scripts\activate`) oppure rieseguire `uv pip install -e ".[dev]"` |
+| `ModuleNotFoundError: No module named 'X'` (qualsiasi modulo) | Venv non attivo | Regola generale: eseguire `.venv\Scripts\activate` all'inizio di ogni sessione PowerShell, oppure prefissare tutti i comandi con `uv run` |
 | `[Errno 10048] error while attempting to bind` | Porta 8000 già in uso | Usare `python main.py serve --port 8080` (o altro numero libero) |
 | Il browser non si apre automaticamente | Impostazioni di sistema | Aprire manualmente `http://127.0.0.1:8000` nel browser |
 | "Another session is active" nel browser | Scheda precedente ancora connessa | Chiudere tutte le schede aperte sulla Web UI e ricaricare |
