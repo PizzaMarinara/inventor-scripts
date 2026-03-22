@@ -214,17 +214,36 @@ cd C:\Progetti\inventor-scripts
 
 ## 5. Installazione delle dipendenze
 
-Con PowerShell aperto nella cartella del progetto, eseguire uno dei seguenti comandi:
-
-**Con uv (consigliato):**
+Con PowerShell aperto nella cartella del progetto, eseguire:
 
 ```powershell
+uv venv
 uv pip install -e ".[dev]"
 ```
 
-**Con pip (alternativa):**
+Il primo comando crea un ambiente virtuale isolato nella cartella `.venv`.
+Il secondo installa tutte le dipendenze del progetto al suo interno.
+
+### Attivare l'ambiente virtuale
+
+Dopo la creazione del venv, **attivarlo** con:
 
 ```powershell
+.venv\Scripts\activate
+```
+
+Il prompt di PowerShell mostrerà `(.venv)` all'inizio per confermare che l'ambiente è attivo.
+Tutti i comandi `python` e `pytest` usati da questo momento faranno riferimento al venv.
+
+> **Importante:** il venv va riattivato ogni volta che si apre una nuova finestra di PowerShell.
+> In alternativa, si può usare il prefisso `uv run` davanti a ogni comando (es. `uv run pytest`,
+> `uv run python main.py ...`) senza bisogno di attivarlo manualmente.
+
+**Alternativa con pip (senza uv):**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
@@ -386,8 +405,10 @@ Se Claude risponde, l'autenticazione è attiva e tutto è pronto.
 Prima di lavorare con i file Inventor, è consigliabile eseguire la suite di test per assicurarsi
 che tutto sia installato correttamente.
 
+Con il venv attivo (o usando `uv run`):
+
 ```powershell
-python -m pytest -m "not inventor" -v
+uv run pytest -m "not inventor" -v
 ```
 
 Il flag `-m "not inventor"` esclude i test che richiedono un'istanza di Inventor attiva
@@ -695,6 +716,7 @@ successivo.
 |---|---|---|
 | `python` non riconosciuto in PowerShell | Python non aggiunto al PATH | Reinstallare Python con la casella "Add python.exe to PATH" spuntata |
 | `uv` non riconosciuto dopo l'installazione | La shell non ha aggiornato il PATH | Chiudere e riaprire PowerShell |
+| `No module named pytest` all'esecuzione dei test | Venv non attivo | Eseguire `.venv\Scripts\activate` oppure usare `uv run pytest` al posto di `python -m pytest` |
 | `ModuleNotFoundError: No module named 'win32com'` | `pywin32` non installato correttamente | Eseguire `pip install pywin32` |
 | Errore al primo import di `win32com` dopo installazione | Script post-installazione non eseguito | Eseguire `python Scripts\pywin32_postinstall.py -install` nella cartella Python (vedere sotto) |
 | `ConnectionError: Inventor is not running` | Inventor non si è avviato automaticamente | Aprire Inventor manualmente, poi rieseguire il comando |

@@ -22,6 +22,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["agent*"]
+exclude = ["input*", "output*", "tests*", "docs*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]   # ensures bare imports (from utils import …) resolve from project root
