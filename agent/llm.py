@@ -179,13 +179,16 @@ USER REQUEST: {last_user_msg}"""
         import shutil
         executable = shutil.which("claude") or "claude"
 
-        cmd = [executable, "-p", full_prompt, "--output-format", "text"]
+        # Pass the prompt via stdin to avoid Windows command-line length limits
+        # and shell-escaping issues with JSON content embedded in the prompt.
+        cmd = [executable, "-p", "--output-format", "text"]
         if self._model:
             cmd.extend(["--model", self._model])
 
         try:
             proc = subprocess.run(
                 cmd,
+                input=full_prompt,
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -201,16 +204,15 @@ USER REQUEST: {last_user_msg}"""
             raise RuntimeError("Claude Code CLI timed out after 120 seconds.")
 
         # Surface stderr / non-zero exit as a clear RuntimeError so callers
-        # (web UI, CLI) can display the real message from the Claude Code CLI
-        # (e.g. "Invalid API key", "Not authenticated", etc.)
+        # (web UI, CLI) can display the real message from the Claude Code CLI.
         if proc.returncode != 0:
-            detail = (proc.stderr.strip() or proc.stdout.strip() or
-                      f"exit code {proc.returncode}")
-            hint = ""
-            lc = detail.lower()
-            if "api key" in lc or "unauthorized" in lc or "authentication" in lc or "login" in lc:
-                hint = "\n→ Esegui 'claude' nel terminale per ri-autenticarti."
-            raise RuntimeError(f"Claude Code CLI error: {detail}{hint}")
+            stderr = proc.stderr.strip()
+            stdout = proc.stdout.strip()
+            raise RuntimeError(
+                f"Claude Code CLI fallito (exit {proc.returncode}).\n"
+                f"  stderr: {stderr or '(vuoto)'}\n"
+                f"  stdout: {stdout or '(vuoto)'}"
+            )
 
         output = proc.stdout.strip()
 

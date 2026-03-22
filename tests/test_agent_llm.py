@@ -99,8 +99,8 @@ def test_claude_code_cli_raises_on_nonzero_exit():
             client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
 
 
-def test_claude_code_cli_hint_on_auth_error():
-    """Auth-related stderr includes a re-authentication hint."""
+def test_claude_code_cli_error_shows_raw_stderr():
+    """RuntimeError on non-zero exit includes the raw stderr content."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(
             stdout="",
@@ -108,5 +108,5 @@ def test_claude_code_cli_hint_on_auth_error():
             returncode=1,
         )
         client = ClaudeCodeCLIClient()
-        with pytest.raises(RuntimeError, match="ri-autenticarti"):
+        with pytest.raises(RuntimeError, match="unauthorized: api key invalid"):
             client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
