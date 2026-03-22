@@ -89,12 +89,79 @@ async def download_file(filename: str):
 
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
-async def _stream_events(session: Session, loop: AgentLoop, instruction: str) -> None:
-    """Run run_streaming() in a thread executor and forward events to the WebSocket."""
+async def _stream_events(
+    session: Session,
+    file_name: str,
+    llm: Any,
+    instruction: str,
+) -> None:
+    """
+    Run the agent in a thread-pool executor and stream events back over WebSocket.
+
+    ALL COM operations (InventorConnection, open_document, ActiveDocument, and every
+    call made inside AgentLoop/ToolExecutor) happen inside _blocking() so they share
+    the same OS thread.  Inventor is an STA COM server: objects created on one thread
+    cannot be safely used from another thread.  pythoncom.CoInitialize() initialises
+    COM for the worker thread; CoUninitialize() cleans up on exit.
+    """
     loop_obj = asyncio.get_event_loop()
 
-    def _blocking():
-        return list(loop.run_streaming(instruction))
+    def _blocking() -> list[StreamEvent]:
+        # ── COM thread initialisation ────────────────────────────────────────
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+            _com_ready = True
+        except (ImportError, OSError):
+            _com_ready = False  # non-Windows / tests without pywin32
+
+        try:
+            # ── Inventor connection (same thread as all subsequent COM calls) ─
+            conn = InventorConnection()
+            conn.connect(launch_if_not_running=True)
+
+            if file_name:
+                doc = conn.open_document((Path.cwd() / "input" / file_name).resolve())
+                if doc is None:
+                    return [StreamEvent(
+                        type="error",
+                        content=(
+                            f"Inventor non ha restituito un documento per '{file_name}'. "
+                            "Verifica che il file esista nella cartella input/ e sia un "
+                            "file .ipt/.iam/.ipn valido."
+                        ),
+                    )]
+            else:
+                doc = conn.app.ActiveDocument
+                if doc is None:
+                    return [StreamEvent(
+                        type="error",
+                        content=(
+                            "Nessun documento aperto in Inventor. "
+                            "Apri un file in Inventor oppure selezionane uno dall'elenco."
+                        ),
+                    )]
+
+            # ── AgentLoop: reuse for memory, refresh executor COM refs each turn ─
+            normalised = file_name or ""
+            file_changed = normalised != (session.active_file or "") or session.loop is None
+            executor = ToolExecutor(doc=doc, conn=conn)
+            if file_changed:
+                session.loop = AgentLoop(llm=llm, executor=executor)
+                session.active_file = normalised
+            else:
+                # Same file: keep history but hand the loop fresh COM object refs
+                # so it uses the connection initialised on this thread.
+                session.loop._executor = executor
+
+            return list(session.loop.run_streaming(instruction))
+
+        finally:
+            if _com_ready:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
     try:
         events = await loop_obj.run_in_executor(None, _blocking)
@@ -127,78 +194,31 @@ async def _handle_chat(session: Session, data: dict) -> None:
         await session.ws.send_json({"type": "error", "message": "Agent is already running."})
         return
 
-    file_name: str | None = data.get("file")
+    file_name: str = data.get("file") or ""
     instruction: str = data.get("message", "")
 
     session.is_running = True
     session.cancel_event.clear()
 
-    try:
-        # Select LLM backend — mirrors the same logic as main.py `ask`
-        use_claude_code = os.environ.get("CLAUDE_CODE", "false").lower() == "true"
-        if use_claude_code:
-            llm = ClaudeCodeCLIClient()
-        else:
-            api_key = os.environ.get("ANTHROPIC_API_KEY")
-            if not api_key:
-                await session.ws.send_json({
-                    "type": "error",
-                    "message": (
-                        "Nessun backend LLM configurato. "
-                        "Imposta CLAUDE_CODE=true oppure ANTHROPIC_API_KEY nel file .env."
-                    ),
-                })
-                session.is_running = False
-                return
-            llm = ClaudeLLMClient(api_key=api_key)
+    # Select LLM backend — no COM involved here
+    use_claude_code = os.environ.get("CLAUDE_CODE", "false").lower() == "true"
+    if use_claude_code:
+        llm: Any = ClaudeCodeCLIClient()
+    else:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            await session.ws.send_json({
+                "type": "error",
+                "message": (
+                    "Nessun backend LLM configurato. "
+                    "Imposta CLAUDE_CODE=true oppure ANTHROPIC_API_KEY nel file .env."
+                ),
+            })
+            session.is_running = False
+            return
+        llm = ClaudeLLMClient(api_key=api_key)
 
-        conn = InventorConnection()
-        conn.connect(launch_if_not_running=True)
-        session.conn = conn
-
-        if file_name:
-            doc = conn.open_document((Path.cwd() / "input" / file_name).resolve())
-            if doc is None:
-                await session.ws.send_json({
-                    "type": "error",
-                    "message": f"Inventor non ha restituito un documento per '{file_name}'. "
-                               "Verifica che il file esista nella cartella input/ e sia un file .ipt/.iam/.ipn valido.",
-                })
-                session.is_running = False
-                return
-            session.doc = doc
-            session.active_file = file_name
-        else:
-            doc = conn.app.ActiveDocument
-            if doc is None:
-                await session.ws.send_json({
-                    "type": "error",
-                    "message": "Nessun documento aperto in Inventor. "
-                               "Apri un file in Inventor oppure selezionane uno dall'elenco.",
-                })
-                session.is_running = False
-                return
-            # Normalise: None → "" so comparisons work when no file is selected
-            session.active_file = ""
-            session.doc = doc
-
-        executor = ToolExecutor(doc=doc, conn=conn)
-
-        # Reuse the existing AgentLoop if the file hasn't changed — this preserves
-        # conversation history so the agent remembers previous messages in the session.
-        # Recreate it only when a different file is selected (fresh context needed).
-        # Normalise file_name: empty string and None both mean "active document".
-        normalised_file = file_name or ""
-        file_changed = normalised_file != (session.active_file or "") or session.loop is None
-        if file_changed:
-            session.loop = AgentLoop(llm=llm, executor=executor)
-            session.active_file = normalised_file
-
-        await _stream_events(session, session.loop, instruction)
-
-    except Exception as exc:
-        await session.ws.send_json({"type": "error", "message": str(exc)})
-        session.is_running = False
+    await _stream_events(session, file_name, llm, instruction)
 
 
 @app.websocket("/ws/chat")
