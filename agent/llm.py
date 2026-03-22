@@ -185,6 +185,13 @@ USER REQUEST: {last_user_msg}"""
         if self._model:
             cmd.extend(["--model", self._model])
 
+        # Strip ANTHROPIC_API_KEY from the subprocess environment: if .env contains
+        # the placeholder value (sk-ant-...) copied from .env.example, the claude CLI
+        # would try to use it instead of the OAuth session credentials, causing
+        # "invalid API key" errors even when the user is correctly logged in.
+        import os as _os
+        subprocess_env = {k: v for k, v in _os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
         try:
             proc = subprocess.run(
                 cmd,
@@ -192,6 +199,7 @@ USER REQUEST: {last_user_msg}"""
                 capture_output=True,
                 text=True,
                 timeout=120,
+                env=subprocess_env,
             )
         except FileNotFoundError:
             raise RuntimeError(
