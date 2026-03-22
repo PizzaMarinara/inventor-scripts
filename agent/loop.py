@@ -23,8 +23,11 @@ from typing import Any, Iterator
 from agent.llm import LLMClient, LLMResponse, ToolCall
 from agent.tools import TOOLS
 from agent.describe import describe_model
-from extract import extract_parameters, extract_bom, extract_properties
-from modify import set_parameter, set_parameters_batch, save_as, open_in_inventor
+from extract import extract_parameters, extract_bom, extract_properties, extract_occurrences
+from modify import (
+    set_parameter, set_parameters_batch, save_as, open_in_inventor,
+    add_component, remove_component, set_suppressed, _get_or_open_sub_doc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +50,30 @@ Rules:
   the document context is not yet available in the conversation history. Do NOT call it
   again if the document has already been described earlier in this same conversation.
 - Use exact parameter names from describe_model output (case-sensitive).
+- Parameters are labelled [user], [model], or [reference]. Model parameters (d0, d1, …)
+  are writable. Reference parameters are read-only — attempting to write them returns an error.
 - If a parameter name is ambiguous, list candidates and ask the engineer to confirm.
 - After making parameter changes, always call save_as to persist them.
 - After saving, offer to call open_in_inventor so the engineer can verify.
 - Be concise. Report what changed, what the old and new values were.
 - If describe_model returns "unknown" for the file name or reports no parameters,
-  warn the engineer that Inventor may not have an active document open, and ask them
-  to open a file before continuing.
+  warn the engineer that Inventor may not have an active document open.
+
+Occurrence tools (assembly only):
+- Occurrence names include a :N suffix (e.g. "maincyl:1", not "maincyl"). Always use
+  the full name exactly as shown in describe_model output. Do not strip the suffix.
+- To inspect or edit a sub-component's parameters, use get_occurrence_parameters first,
+  then set_occurrence_parameter. Sub-component parameters are NOT visible in describe_model.
+- After set_occurrence_parameter, you MUST call both:
+    1. save_occurrence_document — persists the modified sub-part to disk
+    2. save_as — persists the parent assembly
+  Skipping either leaves changes in memory only.
+- Before calling remove_component, state in your response which occurrence will be deleted
+  and confirm intent with the engineer. Never call remove_component speculatively.
+- When an engineer asks to "save a copy of the whole project" (assembly + all sub-parts),
+  warn that save_as saves only the assembly file. Sub-part references still point to their
+  original paths in the saved copy. A fully portable copy requires Pack-and-Go,
+  which is not yet implemented in this tool.
 """
 
 
@@ -106,6 +126,49 @@ class ToolExecutor:
         elif name == "open_in_inventor":
             open_in_inventor(self.conn, inp["file_path"])
             return {"opened": inp["file_path"]}
+
+        elif name == "list_occurrences":
+            return extract_occurrences(self.doc)
+
+        elif name == "add_component":
+            return add_component(
+                self.doc,
+                self.conn.app,
+                inp["file_path"],
+                inp.get("translation_mm"),
+            )
+
+        elif name == "remove_component":
+            return remove_component(self.doc, inp["occurrence_name"])
+
+        elif name == "suppress_component":
+            return set_suppressed(self.doc, inp["occurrence_name"], True)
+
+        elif name == "unsuppress_component":
+            return set_suppressed(self.doc, inp["occurrence_name"], False)
+
+        elif name == "get_occurrence_parameters":
+            sub_doc = _get_or_open_sub_doc(
+                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
+                self.conn.app,
+            )
+            return extract_parameters(sub_doc)
+
+        elif name == "set_occurrence_parameter":
+            sub_doc = _get_or_open_sub_doc(
+                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
+                self.conn.app,
+            )
+            return set_parameter(sub_doc, inp["param_name"], inp["value"])
+
+        elif name == "save_occurrence_document":
+            sub_doc = _get_or_open_sub_doc(
+                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
+                self.conn.app,
+            )
+            dest = Path.cwd() / "output" / inp["filename"]
+            saved_path = save_as(sub_doc, dest)
+            return {"saved_to": str(saved_path)}
 
         else:
             return {"error": f"Unknown tool: {name}"}

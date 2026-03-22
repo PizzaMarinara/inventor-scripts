@@ -216,3 +216,126 @@ def test_run_delegates_to_run_streaming():
 
     assert result.final_text == "Delegated."
     assert any(tc.name == "describe_model" for tc in result.tool_calls_made)
+
+
+from tests.conftest import make_mock_assembly_doc, make_mock_occurrence
+
+
+def _make_assembly_executor():
+    occ = make_mock_occurrence("maincyl:1", "Cylinder_Main", "C:/maincyl.ipt")
+    doc = make_mock_assembly_doc(occurrences=[occ])
+    # Wire ItemByName so occurrence tools can look up by name
+    doc.ComponentDefinition.Occurrences.ItemByName.return_value = occ
+    conn = MagicMock()
+    return ToolExecutor(doc=doc, conn=conn), doc, occ
+
+
+def test_executor_dispatches_list_occurrences():
+    executor, doc, _ = _make_assembly_executor()
+    tc = ToolCall(id="t1", name="list_occurrences", input={})
+    result = executor.execute(tc)
+    assert isinstance(result, list)
+
+
+def test_executor_dispatches_add_component():
+    executor, doc, _ = _make_assembly_executor()
+    new_occ = MagicMock()
+    new_occ.Name = "bracket:1"
+    doc.ComponentDefinition.Occurrences.Add.return_value = new_occ
+    tc = ToolCall(id="t1", name="add_component", input={"file_path": "C:/bracket.ipt"})
+    result = executor.execute(tc)
+    assert result["occurrence_name"] == "bracket:1"
+
+
+def test_executor_dispatches_remove_component():
+    executor, doc, occ = _make_assembly_executor()
+    tc = ToolCall(id="t1", name="remove_component", input={"occurrence_name": "maincyl:1"})
+    result = executor.execute(tc)
+    assert result == {"removed": "maincyl:1"}
+    occ.Delete.assert_called_once()
+
+
+def test_executor_dispatches_suppress_component():
+    executor, doc, occ = _make_assembly_executor()
+    tc = ToolCall(id="t1", name="suppress_component", input={"occurrence_name": "maincyl:1"})
+    result = executor.execute(tc)
+    assert result["suppressed"] is True
+    assert occ.Suppressed is True
+
+
+def test_executor_dispatches_unsuppress_component():
+    executor, doc, occ = _make_assembly_executor()
+    tc = ToolCall(id="t1", name="unsuppress_component", input={"occurrence_name": "maincyl:1"})
+    result = executor.execute(tc)
+    assert result["suppressed"] is False
+
+
+def test_executor_dispatches_get_occurrence_parameters():
+    executor, doc, occ = _make_assembly_executor()
+    # Wire the sub-doc with a model parameter
+    sub_doc = MagicMock()
+    occ.Definition.Document = sub_doc
+    model_param = MagicMock()
+    model_param.Name = "d0"
+    model_param.Expression = "500 mm"
+    model_param.Units = "mm"
+    model_param.Comment = ""
+    sub_doc.ComponentDefinition.Parameters.UserParameters.__iter__ = MagicMock(
+        side_effect=lambda: iter([])
+    )
+    sub_doc.ComponentDefinition.Parameters.ModelParameters.__iter__ = MagicMock(
+        side_effect=lambda: iter([model_param])
+    )
+    sub_doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__ = MagicMock(
+        side_effect=lambda: iter([])
+    )
+    tc = ToolCall(id="t1", name="get_occurrence_parameters", input={"occurrence_name": "maincyl:1"})
+    result = executor.execute(tc)
+    assert "d0" in result
+    assert result["d0"]["type"] == "model"
+
+
+def test_executor_dispatches_set_occurrence_parameter():
+    executor, doc, occ = _make_assembly_executor()
+    sub_doc = MagicMock()
+    occ.Definition.Document = sub_doc
+    param = MagicMock()
+    param.Expression = "500 mm"
+    sub_doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception
+    sub_doc.ComponentDefinition.Parameters.ModelParameters.Item.return_value = param
+    tc = ToolCall(
+        id="t1", name="set_occurrence_parameter",
+        input={"occurrence_name": "maincyl:1", "param_name": "d0", "value": "700 mm"}
+    )
+    result = executor.execute(tc)
+    assert result["new_value"] == "700 mm"
+    assert param.Expression == "700 mm"
+
+
+def test_executor_dispatches_save_occurrence_document():
+    executor, doc, occ = _make_assembly_executor()
+    sub_doc = MagicMock()
+    occ.Definition.Document = sub_doc
+    tc = ToolCall(
+        id="t1", name="save_occurrence_document",
+        input={"occurrence_name": "maincyl:1", "filename": "maincyl_modified.ipt"}
+    )
+    result = executor.execute(tc)
+    assert "saved_to" in result
+    sub_doc.SaveAs.assert_called_once()
+
+
+def test_system_prompt_contains_occurrence_guidance():
+    from agent.loop import SYSTEM_PROMPT
+    assert "occurrence" in SYSTEM_PROMPT.lower()
+    assert ":1" in SYSTEM_PROMPT or ":N" in SYSTEM_PROMPT
+
+
+def test_system_prompt_contains_save_chain_guidance():
+    from agent.loop import SYSTEM_PROMPT
+    assert "save_occurrence_document" in SYSTEM_PROMPT
+
+
+def test_system_prompt_contains_pack_and_go_warning():
+    from agent.loop import SYSTEM_PROMPT
+    assert "pack" in SYSTEM_PROMPT.lower() or "portable" in SYSTEM_PROMPT.lower()
