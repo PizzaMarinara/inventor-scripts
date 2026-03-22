@@ -158,10 +158,26 @@ async def _handle_chat(session: Session, data: dict) -> None:
 
         if file_name:
             doc = conn.open_document((Path.cwd() / "input" / file_name).resolve())
+            if doc is None:
+                await session.ws.send_json({
+                    "type": "error",
+                    "message": f"Inventor non ha restituito un documento per '{file_name}'. "
+                               "Verifica che il file esista nella cartella input/ e sia un file .ipt/.iam/.ipn valido.",
+                })
+                session.is_running = False
+                return
             session.doc = doc
             session.active_file = file_name
         else:
             doc = conn.app.ActiveDocument
+            if doc is None:
+                await session.ws.send_json({
+                    "type": "error",
+                    "message": "Nessun documento aperto in Inventor. "
+                               "Apri un file in Inventor oppure selezionane uno dall'elenco.",
+                })
+                session.is_running = False
+                return
             session.doc = doc
 
         executor = ToolExecutor(doc=doc, conn=conn)

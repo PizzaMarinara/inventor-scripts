@@ -44,10 +44,19 @@ def get_connection(file_path: Optional[Path] = None) -> tuple[InventorConnection
 
     if file_path:
         doc = conn.open_document(file_path.resolve())
+        if doc is None:
+            raise typer.BadParameter(f"Inventor returned None for '{file_path}'. "
+                                     "Check that the file exists and is a valid .ipt/.iam/.ipn.")
         console.print(f"[green]Opened:[/green] {file_path}")
     else:
         # Use the active document already open in Inventor
         doc = conn.app.ActiveDocument
+        if doc is None:
+            raise typer.BadParameter(
+                "Nessun documento aperto in Inventor.\n"
+                "  Apri un file in Inventor oppure passa il percorso come argomento:\n"
+                "  python main.py <comando> input\\modello.iam"
+            )
         console.print(f"[green]Using active document:[/green] {doc.DisplayName}")
 
     return conn, doc
