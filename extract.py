@@ -22,18 +22,42 @@ def extract_properties(doc: object) -> dict[str, dict[str, Any]]:
 
 def extract_parameters(doc: object) -> dict[str, dict[str, Any]]:
     """
-    Extract user-defined parameters from .ipt or .iam documents.
-    Returns empty dict for document types that don't support parameters.
+    Extract parameters from .ipt or .iam documents — all three types.
+
+    Returns a dict keyed by parameter name. Each entry has:
+        value   — expression string (e.g. "500 mm")
+        units   — unit string (e.g. "mm")
+        comment — user comment, may be empty string
+        type    — "model" | "user" | "reference"
+
+    Loop order is intentional: model first, then user. A user parameter with
+    the same name as a model parameter overwrites the model entry, matching
+    Inventor's own precedence rules.
+
+    ReferenceParameters are read-only computed values. They are included in
+    the output (type="reference") so the AI can see them, but set_parameter()
+    will refuse to write to them.
     """
     result: dict[str, dict] = {}
+    collections = [
+        ("model",     "ModelParameters"),
+        ("user",      "UserParameters"),
+        ("reference", "ReferenceParameters"),
+    ]
     try:
-        for param in doc.ComponentDefinition.Parameters.UserParameters:
-            result[param.Name] = {
-                "value": param.Expression,
-                "units": param.Units,
-                "comment": param.Comment,
-            }
-    except (AttributeError, Exception):
+        params = doc.ComponentDefinition.Parameters
+        for type_tag, collection_name in collections:
+            try:
+                for param in getattr(params, collection_name):
+                    result[param.Name] = {
+                        "value":   param.Expression,
+                        "units":   param.Units,
+                        "comment": param.Comment,
+                        "type":    type_tag,
+                    }
+            except Exception:
+                pass  # collection absent for this doc type — skip silently
+    except Exception:
         pass
     return result
 

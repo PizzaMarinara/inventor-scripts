@@ -54,3 +54,57 @@ def test_extract_all_returns_full_structure(mock_doc):
     assert "source_file" in result
     assert isinstance(result["parameters"], dict)
     assert isinstance(result["bom"], list)
+
+
+def test_extract_parameters_includes_type_field(mock_doc):
+    result = extract_parameters(mock_doc)
+    assert result["Width"]["type"] == "user"
+    assert result["Height"]["type"] == "user"
+
+
+def test_extract_parameters_returns_model_params():
+    doc = make_mock_doc(
+        parameters=[],
+        model_parameters=[
+            make_mock_parameter("d0", "500 mm", "mm"),
+            make_mock_parameter("d1", "80 mm", "mm"),
+        ],
+    )
+    result = extract_parameters(doc)
+    assert "d0" in result
+    assert result["d0"]["value"] == "500 mm"
+    assert result["d0"]["type"] == "model"
+    assert "d1" in result
+    assert result["d1"]["type"] == "model"
+
+
+def test_extract_parameters_returns_reference_params():
+    doc = make_mock_doc(
+        parameters=[],
+        reference_parameters=[
+            make_mock_parameter("FaceArea", "5026 mm2", "mm2"),
+        ],
+    )
+    result = extract_parameters(doc)
+    assert "FaceArea" in result
+    assert result["FaceArea"]["type"] == "reference"
+
+
+def test_extract_parameters_user_wins_on_name_collision():
+    """If a model param and user param share the same name, user param wins."""
+    doc = make_mock_doc(
+        parameters=[make_mock_parameter("Length", "user_val mm", "mm")],
+        model_parameters=[make_mock_parameter("Length", "model_val mm", "mm")],
+    )
+    result = extract_parameters(doc)
+    assert result["Length"]["value"] == "user_val mm"
+    assert result["Length"]["type"] == "user"
+
+
+def test_extract_parameters_empty_when_all_collections_absent():
+    doc = MagicMock()
+    doc.ComponentDefinition.Parameters.ModelParameters.__iter__.side_effect = Exception
+    doc.ComponentDefinition.Parameters.UserParameters.__iter__.side_effect = Exception
+    doc.ComponentDefinition.Parameters.ReferenceParameters.__iter__.side_effect = Exception
+    result = extract_parameters(doc)
+    assert result == {}
