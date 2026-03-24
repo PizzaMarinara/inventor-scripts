@@ -252,6 +252,7 @@ Your response (JSON only):"""
         output = proc.stdout.strip()
 
         # Parse JSON response from Claude
+        parsed = None
         try:
             # Claude may wrap the JSON in markdown code fences — strip them
             clean = output.strip()
@@ -260,7 +261,17 @@ Your response (JSON only):"""
                 clean = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
             parsed = _json.loads(clean)
         except _json.JSONDecodeError:
-            # If it can't be parsed as JSON, treat as plain text response
+            # Claude may have added reasoning text before/after the JSON object.
+            # Try to extract the first valid JSON object from the output.
+            brace_start = output.find('{')
+            if brace_start != -1:
+                try:
+                    parsed, _ = _json.JSONDecoder().raw_decode(output, brace_start)
+                except _json.JSONDecodeError:
+                    parsed = None
+
+        if parsed is None:
+            # Truly no parseable JSON — treat as plain text response
             return LLMResponse(
                 stop_reason="end_turn",
                 text=output,
