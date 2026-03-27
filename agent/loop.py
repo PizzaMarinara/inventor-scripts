@@ -26,7 +26,8 @@ from agent.describe import describe_model
 from extract import extract_parameters, extract_bom, extract_properties, extract_occurrences
 from modify import (
     set_parameter, set_parameters_batch, save_as, open_in_inventor,
-    add_component, remove_component, set_suppressed, _get_or_open_sub_doc,
+    add_component, remove_component, set_suppressed,
+    _get_or_open_sub_doc, _find_occurrence,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,33 +140,45 @@ class ToolExecutor:
             )
 
         elif name == "remove_component":
-            return remove_component(self.doc, inp["occurrence_name"])
+            occ, parent_doc = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
+            )
+            last_segment = inp["occurrence_name"].split("/")[-1]
+            return remove_component(parent_doc, last_segment)
 
         elif name == "suppress_component":
-            return set_suppressed(self.doc, inp["occurrence_name"], True)
+            occ, parent_doc = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
+            )
+            last_segment = inp["occurrence_name"].split("/")[-1]
+            return set_suppressed(parent_doc, last_segment, True)
 
         elif name == "unsuppress_component":
-            return set_suppressed(self.doc, inp["occurrence_name"], False)
+            occ, parent_doc = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
+            )
+            last_segment = inp["occurrence_name"].split("/")[-1]
+            return set_suppressed(parent_doc, last_segment, False)
 
         elif name == "get_occurrence_parameters":
-            sub_doc = _get_or_open_sub_doc(
-                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
-                self.conn.app,
+            occ, _ = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
             )
+            sub_doc = _get_or_open_sub_doc(occ, self.conn.app)
             return extract_parameters(sub_doc)
 
         elif name == "set_occurrence_parameter":
-            sub_doc = _get_or_open_sub_doc(
-                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
-                self.conn.app,
+            occ, _ = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
             )
+            sub_doc = _get_or_open_sub_doc(occ, self.conn.app)
             return set_parameter(sub_doc, inp["param_name"], inp["value"])
 
         elif name == "save_occurrence_document":
-            sub_doc = _get_or_open_sub_doc(
-                self.doc.ComponentDefinition.Occurrences.ItemByName(inp["occurrence_name"]),
-                self.conn.app,
+            occ, _ = _find_occurrence(
+                self.doc, inp["occurrence_name"], self.conn.app
             )
+            sub_doc = _get_or_open_sub_doc(occ, self.conn.app)
             dest = Path.cwd() / "output" / inp["filename"]
             saved_path = save_as(sub_doc, dest)
             return {"saved_to": str(saved_path)}

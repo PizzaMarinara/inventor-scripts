@@ -65,8 +65,13 @@ async def list_files():
     input_dir = Path.cwd() / "input"
     if not input_dir.exists():
         return {"files": []}
-    files = [f.name for f in input_dir.iterdir() if f.is_file()]
-    return {"files": sorted(files)}
+    # rglob("*") recurses into all subdirectories; use POSIX separators for the UI
+    files = [
+        f.relative_to(input_dir).as_posix()
+        for f in sorted(input_dir.rglob("*"))
+        if f.is_file()
+    ]
+    return {"files": files}
 
 
 @app.get("/api/outputs")

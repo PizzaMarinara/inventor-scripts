@@ -10,9 +10,12 @@ To add a new provider:
 Current providers: Claude (default), Claude Code CLI
 """
 from __future__ import annotations
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -219,24 +222,39 @@ Your response (JSON only):"""
         import os as _os
         subprocess_env = {k: v for k, v in _os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
-        try:
-            proc = subprocess.run(
-                cmd,
-                input=full_prompt,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                env=subprocess_env,
-            )
-        except FileNotFoundError:
-            raise RuntimeError(
-                "Claude Code CLI non trovato. "
-                "Installarlo con: npm install -g @anthropic-ai/claude-code\n"
-                "Dopo l'installazione riavviare PowerShell/terminale e riprovare.\n"
-                "In alternativa usare ClaudeLLMClient con ANTHROPIC_API_KEY."
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError("Claude Code CLI timed out after 120 seconds.")
+        _TIMEOUT = 300
+        _MAX_RETRIES = 2
+        proc = None
+        for _attempt in range(_MAX_RETRIES + 1):
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    input=full_prompt,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=_TIMEOUT,
+                    env=subprocess_env,
+                )
+                break
+            except FileNotFoundError:
+                raise RuntimeError(
+                    "Claude Code CLI non trovato. "
+                    "Installarlo con: npm install -g @anthropic-ai/claude-code\n"
+                    "Dopo l'installazione riavviare PowerShell/terminale e riprovare.\n"
+                    "In alternativa usare ClaudeLLMClient con ANTHROPIC_API_KEY."
+                )
+            except subprocess.TimeoutExpired:
+                if _attempt < _MAX_RETRIES:
+                    logger.warning(
+                        "Claude Code CLI timeout (tentativo %d/%d), nuovo tentativo...",
+                        _attempt + 1, _MAX_RETRIES + 1,
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Claude Code CLI scaduto dopo {_MAX_RETRIES + 1} tentativi "
+                        f"({_TIMEOUT}s ciascuno)."
+                    )
 
         # Surface stderr / non-zero exit as a clear RuntimeError so callers
         # (web UI, CLI) can display the real message from the Claude Code CLI.
@@ -251,24 +269,41 @@ Your response (JSON only):"""
 
         output = proc.stdout.strip()
 
-        # Parse JSON response from Claude
+        # Parse JSON response from Claude.
+        # Claude sometimes outputs reasoning text alongside (or before) the JSON action.
+        # Scan ALL JSON objects in the output and prioritise any tool_use action over
+        # a text action, so that a tool call is never silently dropped.
         parsed = None
         try:
-            # Claude may wrap the JSON in markdown code fences — strip them
             clean = output.strip()
             if clean.startswith("```"):
                 lines = clean.splitlines()
                 clean = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
             parsed = _json.loads(clean)
         except _json.JSONDecodeError:
-            # Claude may have added reasoning text before/after the JSON object.
-            # Try to extract the first valid JSON object from the output.
-            brace_start = output.find('{')
-            if brace_start != -1:
+            parsed = None
+
+        # If full parse failed OR yielded only a text action, scan for a tool_use block.
+        if parsed is None or parsed.get("action") != "tool_use":
+            tool_use_candidate = None
+            text_candidate = parsed  # keep the already-found text action if any
+            pos = 0
+            while pos < len(output):
+                brace_start = output.find('{', pos)
+                if brace_start == -1:
+                    break
                 try:
-                    parsed, _ = _json.JSONDecoder().raw_decode(output, brace_start)
+                    candidate, end_pos = _json.JSONDecoder().raw_decode(output, brace_start)
+                    if isinstance(candidate, dict):
+                        if candidate.get("action") == "tool_use":
+                            tool_use_candidate = candidate
+                            break  # tool_use takes priority — stop scanning
+                        elif candidate.get("action") == "text" and text_candidate is None:
+                            text_candidate = candidate
+                    pos = end_pos
                 except _json.JSONDecodeError:
-                    parsed = None
+                    pos = brace_start + 1
+            parsed = tool_use_candidate if tool_use_candidate is not None else text_candidate
 
         if parsed is None:
             # Truly no parseable JSON — treat as plain text response

@@ -94,20 +94,24 @@ def extract_bom(doc: object) -> list[dict[str, Any]]:
     return rows
 
 
-def extract_occurrences(doc: object) -> list[dict[str, Any]]:
+def extract_occurrences(
+    doc: object,
+    _prefix: str = "",
+    _depth: int = 0,
+) -> list[dict[str, Any]]:
     """
-    Extract all component occurrences from an .iam assembly document.
+    Extract all component occurrences from an .iam assembly document, recursively.
 
-    Returns a flat list — one entry per placement (unlike BOM, which groups
-    by component definition). Returns [] for part documents or any doc that
-    does not expose an Occurrences collection.
+    Returns a flat list — one entry per placement at every nesting level.
+    Nested occurrence names use '/' as path separator, e.g. "subassy:1/part:1".
+    Returns [] for part documents or any doc without an Occurrences collection.
 
     Each entry:
-        occurrence_name  — Inventor-assigned name, e.g. "maincyl:1"
-        component_name   — Display name of the component definition
-        file_path        — Full path to the sub-document (works even if unloaded)
+        occurrence_name  — full path name, e.g. "maincyl:1" or "subassy:1/part:1"
+        component_name   — display name of the component definition
+        file_path        — full path to the sub-document (works even if unloaded)
         suppressed       — bool
-        translation_mm   — [x, y, z] offset from assembly origin in mm
+        translation_mm   — [x, y, z] offset from the parent assembly origin in mm
                            (Inventor stores internally in cm; multiplied by 10 here)
     """
     result: list[dict] = []
@@ -116,13 +120,22 @@ def extract_occurrences(doc: object) -> list[dict[str, Any]]:
             try:
                 pt = occ.Transformation.Translation
                 translation_mm = [pt.X * 10, pt.Y * 10, pt.Z * 10]
+                full_name = f"{_prefix}/{occ.Name}" if _prefix else occ.Name
                 result.append({
-                    "occurrence_name": occ.Name,
+                    "occurrence_name": full_name,
                     "component_name":  occ.Definition.DisplayName,
                     "file_path":       occ.ReferencedDocumentDescriptor.FullDocumentName,
                     "suppressed":      occ.Suppressed,
                     "translation_mm":  translation_mm,
                 })
+                # Recurse into sub-assemblies (cap depth to avoid runaway traversal)
+                if _depth < 5:
+                    try:
+                        sub_doc = occ.Definition.Document
+                        sub_occs = extract_occurrences(sub_doc, full_name, _depth + 1)
+                        result.extend(sub_occs)
+                    except Exception:
+                        pass  # sub-doc unloaded or not an assembly — skip silently
             except Exception:
                 pass  # skip malformed occurrences
     except Exception:

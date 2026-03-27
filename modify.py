@@ -126,6 +126,33 @@ def open_in_inventor(conn: object, file_path: str | Path) -> object:
     return conn.open_document(str(file_path))
 
 
+def _find_occurrence(doc: object, occurrence_path: str, app: object) -> tuple:
+    """
+    Resolve an occurrence by name or slash-separated path.
+
+    Supports both flat names ("part:1") and nested paths ("subassy:1/part:1").
+    Returns (occurrence, parent_doc) where parent_doc is the assembly that
+    directly contains the occurrence (needed for removal / suppression calls).
+
+    Raises ValueError if any segment of the path is not found.
+    """
+    segments = occurrence_path.split("/")
+    current_doc = doc
+    occ = None
+    for i, segment in enumerate(segments):
+        try:
+            occ = current_doc.ComponentDefinition.Occurrences.ItemByName(segment)
+        except Exception:
+            parent_label = segments[i - 1] if i > 0 else "assembly"
+            raise ValueError(
+                f"Occurrence '{segment}' not found in '{parent_label}'"
+            )
+        if i < len(segments) - 1:
+            # Navigate into the sub-assembly for the next segment
+            current_doc = _get_or_open_sub_doc(occ, app)
+    return occ, current_doc
+
+
 def _get_or_open_sub_doc(occ: object, app: object) -> object:
     """
     Return the sub-document for a ComponentOccurrence.
