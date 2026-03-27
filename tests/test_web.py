@@ -43,6 +43,16 @@ def test_api_outputs_lists_output_dir(tmp_path, monkeypatch):
     assert "result.json" in resp.json()["files"]
 
 
+def test_api_download_rejects_path_traversal(tmp_path, monkeypatch):
+    from web import app
+    (tmp_path / "output").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    client = TestClient(app)
+    resp = client.get("/api/download/../web.py")
+    assert resp.status_code == 400
+
+
 def test_api_download_returns_file(tmp_path, monkeypatch):
     from web import app
     output_dir = tmp_path / "output"
@@ -54,7 +64,8 @@ def test_api_download_returns_file(tmp_path, monkeypatch):
     client = TestClient(app)
     resp = client.get("/api/download/data.json")
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True}
+    assert resp.content == b'{"ok": true}'
+    assert "application/json" in resp.headers["content-type"]
 
 
 def test_api_download_missing_file_returns_404(tmp_path, monkeypatch):

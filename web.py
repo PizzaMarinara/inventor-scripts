@@ -85,11 +85,14 @@ async def list_outputs():
 
 @app.get("/api/download/{filename}")
 async def download_file(filename: str):
-    target = Path.cwd() / "output" / filename
-    if not target.exists():
-        from fastapi import HTTPException
+    from fastapi import HTTPException
+    output_dir = (Path.cwd() / "output").resolve()
+    resolved = (output_dir / filename).resolve()
+    if not resolved.is_relative_to(output_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not resolved.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(str(target), filename=filename)
+    return FileResponse(str(resolved), filename=resolved.name)
 
 
 # ── WebSocket handler ─────────────────────────────────────────────────────────
