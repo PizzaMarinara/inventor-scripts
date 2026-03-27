@@ -14,12 +14,12 @@ import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.requests import Request
 
 from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient
 from agent.loop import AgentLoop, StreamEvent, ToolExecutor
