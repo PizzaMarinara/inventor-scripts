@@ -217,7 +217,6 @@ dependencies = [
     { name = "jinja2" },
     { name = "pydantic" },
     { name = "python-dotenv" },
-    { name = "pywin32" },
     { name = "rich" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
@@ -227,6 +226,9 @@ dependencies = [
 dev = [
     { name = "pytest" },
     { name = "pytest-mock" },
+]
+windows = [
+    { name = "pywin32" },
 ]
 
 [package.metadata]
@@ -238,12 +240,12 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.14.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "pywin32", specifier = ">=306" },
+    { name = "pywin32", marker = "extra == 'windows'", specifier = ">=306" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "windows"]
 
 [[package]]
 name = "jinja2"

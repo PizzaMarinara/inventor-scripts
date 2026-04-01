@@ -83,7 +83,7 @@ async def list_outputs():
     return {"files": sorted(files)}
 
 
-@app.get("/api/download/{filename}")
+@app.get("/api/download/{filename:path}")
 async def download_file(filename: str):
     from fastapi import HTTPException
     output_dir = (Path.cwd() / "output").resolve()

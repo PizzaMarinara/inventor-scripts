@@ -49,7 +49,8 @@ def test_api_download_rejects_path_traversal(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     client = TestClient(app)
-    resp = client.get("/api/download/../web.py")
+    # Use percent-encoded slash so the path traversal reaches the endpoint
+    resp = client.get("/api/download/..%2Fweb.py")
     assert resp.status_code == 400
 
 
