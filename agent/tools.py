@@ -32,6 +32,7 @@ class ToolName(StrEnum):
     GET_OCCURRENCE_PARAMETERS = "get_occurrence_parameters"
     SET_OCCURRENCE_PARAMETER = "set_occurrence_parameter"
     SAVE_OCCURRENCE_DOCUMENT = "save_occurrence_document"
+    GET_ALL_OCCURRENCE_PARAMETERS = "get_all_occurrence_parameters"
 
 
 TOOLS: list[dict] = [
@@ -302,6 +303,24 @@ TOOLS: list[dict] = [
                 },
             },
             "required": ["occurrence_name", "filename"],
+        },
+    },
+    {
+        "name": ToolName.GET_ALL_OCCURRENCE_PARAMETERS,
+        "description": (
+            "Get all parameters from every unique part file referenced in the open assembly. (assembly only) "
+            "Returns a dict keyed by file path. Each entry contains: "
+            "'occurrences' (list of occurrence names that reference this file, using '/' for nesting), "
+            "'parameters' (same format as get_parameters), "
+            "'out_of_scope' (true if the file lives outside this tool's input/ directory — "
+            "warn the user before modifying out_of_scope parts, as they may be shared or external files). "
+            "Use this as a starting point for any task that involves multiple parts, "
+            "such as finding all parts with a specific parameter or batch-modifying dimensions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     },
 ]

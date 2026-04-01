@@ -86,3 +86,20 @@ def test_occurrence_name_tools_have_occurrence_name_required():
         assert "occurrence_name" in tool["input_schema"]["required"], (
             f"Tool '{name}' must require occurrence_name"
         )
+
+
+def test_get_all_occurrence_parameters_tool_present():
+    names = {t["name"] for t in TOOLS}
+    assert "get_all_occurrence_parameters" in names
+
+
+def test_get_all_occurrence_parameters_has_no_required_inputs():
+    tool = get_tool_by_name("get_all_occurrence_parameters")
+    assert tool["input_schema"].get("required", []) == []
+
+
+def test_get_all_occurrence_parameters_description_mentions_assembly_and_out_of_scope():
+    tool = get_tool_by_name("get_all_occurrence_parameters")
+    desc = tool["description"].lower()
+    assert "assembly" in desc
+    assert "out_of_scope" in desc or "out of scope" in desc
