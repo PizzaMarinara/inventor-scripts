@@ -159,24 +159,24 @@ def extract_all(doc: object) -> dict[str, Any]:
 def _collect_all_occurrence_params(
     doc: object,
     app: object,
-    prefix: str,
-    depth: int,
-    result: dict,
+    _prefix: str,
+    _depth: int,
+    result: dict[str, dict[str, Any]],
     scope_root: Path,
 ) -> None:
     try:
         for occ in doc.ComponentDefinition.Occurrences:
             try:
-                full_name = f"{prefix}/{occ.Name}" if prefix else occ.Name
+                full_name = f"{_prefix}/{occ.Name}" if _prefix else occ.Name
                 file_path = occ.ReferencedDocumentDescriptor.FullDocumentName
 
+                sub_doc = None
                 if file_path not in result:
                     try:
                         out_of_scope = not Path(file_path).resolve().is_relative_to(scope_root)
                     except Exception:
                         out_of_scope = True
 
-                    sub_doc = None
                     error = None
                     try:
                         sub_doc = occ.Definition.Document
@@ -202,11 +202,10 @@ def _collect_all_occurrence_params(
 
                 result[file_path]["occurrences"].append(full_name)
 
-                if depth < 5:
+                if _depth < 5 and sub_doc is not None:
                     try:
-                        sub_doc = occ.Definition.Document
                         _collect_all_occurrence_params(
-                            sub_doc, app, full_name, depth + 1, result, scope_root
+                            sub_doc, app, full_name, _depth + 1, result, scope_root
                         )
                     except Exception:
                         pass
@@ -217,7 +216,7 @@ def _collect_all_occurrence_params(
         pass
 
 
-def extract_all_occurrence_parameters(doc: object, app: object) -> dict:
+def extract_all_occurrence_parameters(doc: object, app: object) -> dict[str, dict[str, Any]]:
     """
     For each unique part file referenced in the assembly, return:
       - occurrences: list of full path names using '/' separator for nesting
@@ -230,6 +229,6 @@ def extract_all_occurrence_parameters(doc: object, app: object) -> dict:
     Never raises — all errors are swallowed, partial results always returned.
     """
     scope_root = (Path.cwd() / "input").resolve()
-    result: dict = {}
+    result: dict[str, dict[str, Any]] = {}
     _collect_all_occurrence_params(doc, app, "", 0, result, scope_root)
     return result

@@ -84,6 +84,13 @@ def make_mock_occurrence(
     return occ
 
 
+def make_occ_with_sub_doc(name: str, file_path: str, sub_doc: MagicMock) -> MagicMock:
+    """Create a mock occurrence whose Definition.Document returns sub_doc."""
+    occ = make_mock_occurrence(name, name, file_path)
+    occ.Definition.Document = sub_doc
+    return occ
+
+
 def make_mock_assembly_doc(occurrences: list | None = None, **kwargs) -> MagicMock:
     """
     Build a mock assembly document with an Occurrences collection.

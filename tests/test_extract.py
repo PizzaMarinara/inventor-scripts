@@ -7,6 +7,7 @@ from tests.conftest import (
     make_mock_bom_row,
     make_mock_occurrence,
     make_mock_assembly_doc,
+    make_occ_with_sub_doc,
 )
 from extract import (
     extract_properties, extract_parameters, extract_bom,
@@ -165,11 +166,11 @@ def test_extract_occurrences_returns_empty_for_zero_occurrences():
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _occ_with_sub_doc(name, file_path, sub_doc):
-    """Create a mock occurrence whose Definition.Document returns sub_doc."""
-    occ = make_mock_occurrence(name, name, file_path)
-    occ.Definition.Document = sub_doc
-    return occ
+class _UnloadedDef:
+    @property
+    def Document(self):
+        raise Exception("not loaded")
+    DisplayName = "part"
 
 
 # ── tests ────────────────────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ def test_extract_all_occurrence_parameters_in_scope(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     file_path = str(tmp_path / "input" / "bolt.ipt")
     sub_doc = make_mock_doc(parameters=[make_mock_parameter("Length", "50 mm", "mm")])
-    occ = _occ_with_sub_doc("bolt:1", file_path, sub_doc)
+    occ = make_occ_with_sub_doc("bolt:1", file_path, sub_doc)
     doc = make_mock_assembly_doc(occurrences=[occ])
 
     result = extract_all_occurrence_parameters(doc, MagicMock())
@@ -191,9 +192,9 @@ def test_extract_all_occurrence_parameters_in_scope(tmp_path, monkeypatch):
 
 def test_extract_all_occurrence_parameters_out_of_scope(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    file_path = "C:/shared_lib/washer.ipt"
+    file_path = str(tmp_path.parent / "other_project" / "washer.ipt")
     sub_doc = make_mock_doc(parameters=[make_mock_parameter("Thickness", "2 mm", "mm")])
-    occ = _occ_with_sub_doc("washer:1", file_path, sub_doc)
+    occ = make_occ_with_sub_doc("washer:1", file_path, sub_doc)
     doc = make_mock_assembly_doc(occurrences=[occ])
 
     result = extract_all_occurrence_parameters(doc, MagicMock())
@@ -205,8 +206,8 @@ def test_extract_all_occurrence_parameters_deduplicates_file_path(tmp_path, monk
     monkeypatch.chdir(tmp_path)
     file_path = str(tmp_path / "input" / "bolt.ipt")
     sub_doc = make_mock_doc(parameters=[make_mock_parameter("Length", "50 mm", "mm")])
-    occ1 = _occ_with_sub_doc("bolt:1", file_path, sub_doc)
-    occ2 = _occ_with_sub_doc("bolt:2", file_path, sub_doc)
+    occ1 = make_occ_with_sub_doc("bolt:1", file_path, sub_doc)
+    occ2 = make_occ_with_sub_doc("bolt:2", file_path, sub_doc)
     doc = make_mock_assembly_doc(occurrences=[occ1, occ2])
 
     result = extract_all_occurrence_parameters(doc, MagicMock())
@@ -220,12 +221,6 @@ def test_extract_all_occurrence_parameters_falls_back_to_open_when_doc_unloaded(
     monkeypatch.chdir(tmp_path)
     file_path = str(tmp_path / "input" / "part.ipt")
     sub_doc = make_mock_doc(parameters=[make_mock_parameter("Width", "100 mm", "mm")])
-
-    class _UnloadedDef:
-        @property
-        def Document(self):
-            raise Exception("not loaded")
-        DisplayName = "part"
 
     occ = make_mock_occurrence("part:1", "part", file_path)
     occ.Definition = _UnloadedDef()
@@ -242,12 +237,6 @@ def test_extract_all_occurrence_parameters_falls_back_to_open_when_doc_unloaded(
 def test_extract_all_occurrence_parameters_error_when_doc_cannot_open(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     file_path = str(tmp_path / "input" / "missing.ipt")
-
-    class _UnloadedDef:
-        @property
-        def Document(self):
-            raise Exception("not loaded")
-        DisplayName = "missing"
 
     occ = make_mock_occurrence("missing:1", "missing", file_path)
     occ.Definition = _UnloadedDef()
@@ -273,11 +262,11 @@ def test_extract_all_occurrence_parameters_recurses_into_sub_assembly(tmp_path, 
     monkeypatch.chdir(tmp_path)
     part_path = str(tmp_path / "input" / "bolt.ipt")
     part_doc = make_mock_doc(parameters=[make_mock_parameter("Length", "50 mm", "mm")])
-    part_occ = _occ_with_sub_doc("bolt:1", part_path, part_doc)
+    part_occ = make_occ_with_sub_doc("bolt:1", part_path, part_doc)
 
     sub_asm_path = str(tmp_path / "input" / "bracket.iam")
     sub_asm_doc = make_mock_assembly_doc(occurrences=[part_occ])
-    sub_asm_occ = _occ_with_sub_doc("bracket:1", sub_asm_path, sub_asm_doc)
+    sub_asm_occ = make_occ_with_sub_doc("bracket:1", sub_asm_path, sub_asm_doc)
 
     top_doc = make_mock_assembly_doc(occurrences=[sub_asm_occ])
 
@@ -285,4 +274,4 @@ def test_extract_all_occurrence_parameters_recurses_into_sub_assembly(tmp_path, 
 
     assert sub_asm_path in result
     assert part_path in result
-    assert any("bracket:1" in name for name in result[part_path]["occurrences"])
+    assert "bracket:1/bolt:1" in result[part_path]["occurrences"]
