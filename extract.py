@@ -1,5 +1,6 @@
 # extract.py
 from __future__ import annotations
+from pathlib import Path
 from typing import Any
 
 
@@ -153,3 +154,82 @@ def extract_all(doc: object) -> dict[str, Any]:
         "bom": extract_bom(doc),
         "occurrences": extract_occurrences(doc),
     }
+
+
+def _collect_all_occurrence_params(
+    doc: object,
+    app: object,
+    prefix: str,
+    depth: int,
+    result: dict,
+    scope_root: Path,
+) -> None:
+    try:
+        for occ in doc.ComponentDefinition.Occurrences:
+            try:
+                full_name = f"{prefix}/{occ.Name}" if prefix else occ.Name
+                file_path = occ.ReferencedDocumentDescriptor.FullDocumentName
+
+                if file_path not in result:
+                    try:
+                        out_of_scope = not Path(file_path).resolve().is_relative_to(scope_root)
+                    except Exception:
+                        out_of_scope = True
+
+                    sub_doc = None
+                    error = None
+                    try:
+                        sub_doc = occ.Definition.Document
+                    except Exception:
+                        try:
+                            sub_doc = app.Documents.Open(str(file_path))
+                        except Exception as e:
+                            error = str(e)
+
+                    if sub_doc is not None:
+                        result[file_path] = {
+                            "occurrences": [],
+                            "parameters": extract_parameters(sub_doc),
+                            "out_of_scope": out_of_scope,
+                        }
+                    else:
+                        result[file_path] = {
+                            "occurrences": [],
+                            "parameters": {},
+                            "out_of_scope": out_of_scope,
+                            "error": error or "sub-document unavailable",
+                        }
+
+                result[file_path]["occurrences"].append(full_name)
+
+                if depth < 5:
+                    try:
+                        sub_doc = occ.Definition.Document
+                        _collect_all_occurrence_params(
+                            sub_doc, app, full_name, depth + 1, result, scope_root
+                        )
+                    except Exception:
+                        pass
+
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def extract_all_occurrence_parameters(doc: object, app: object) -> dict:
+    """
+    For each unique part file referenced in the assembly, return:
+      - occurrences: list of full path names using '/' separator for nesting
+      - parameters: dict from extract_parameters() — name → {value, units, comment, type}
+      - out_of_scope: True if the file is NOT under cwd/input/
+      - error: (optional) message if the sub-doc could not be opened
+
+    Traverses sub-assemblies recursively up to depth 5 (same cap as extract_occurrences).
+    Parts appearing multiple times are deduplicated — parameters are read once per file path.
+    Never raises — all errors are swallowed, partial results always returned.
+    """
+    scope_root = (Path.cwd() / "input").resolve()
+    result: dict = {}
+    _collect_all_occurrence_params(doc, app, "", 0, result, scope_root)
+    return result
