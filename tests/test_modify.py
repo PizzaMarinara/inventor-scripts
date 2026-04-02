@@ -86,7 +86,7 @@ def test_set_parameter_raises_descriptive_error_on_reference_param():
     doc.ComponentDefinition.Parameters.UserParameters.Item.side_effect = Exception("not found")
     doc.ComponentDefinition.Parameters.ModelParameters.Item.side_effect = Exception("not found")
     doc.ComponentDefinition.Parameters.ReferenceParameters.Item.return_value = ref_param
-    with pytest.raises(ValueError, match="read-only reference parameter"):
+    with pytest.raises(ValueError, match="is read-only"):
         set_parameter(doc, "FaceArea", "9999 mm2")
 
 
