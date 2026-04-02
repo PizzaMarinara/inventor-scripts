@@ -163,15 +163,14 @@ class TestSaveScript:
             save_script("x=1", "javascript", "test")
 
     def test_path_traversal_prevention(self, tmp_scripts_dir):
-        """Filenames with path components should be sanitized."""
-        path = save_script(
-            content="x=1",
-            script_type="python",
-            description="test",
-            filename="../../../etc/passwd.py",
-        )
-        # Should not write outside scripts dir
-        assert str(path).startswith(str(tmp_scripts_dir))
+        """Filenames with path components should be rejected with ValueError."""
+        with pytest.raises(ValueError, match="directory components are not allowed"):
+            save_script(
+                content="x=1",
+                script_type="python",
+                description="test",
+                filename="../../../etc/passwd.py",
+            )
 
     def test_empty_description_generates_slug(self, tmp_scripts_dir):
         path = save_script(

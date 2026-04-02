@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agent.llm import SAFE_ENV_VARS
+
 BASE_DIR = Path(__file__).parent
 SCRIPTS_DIR = BASE_DIR / "scripts"
 
@@ -147,10 +149,9 @@ def save_script(
     # Safety: prevent path traversal
     safe_name = Path(filename).name
     if safe_name != filename:
-        # If the provided filename had directory components, use just the basename
-        # but warn by prefixing the original path as a slug
-        slug = filename.replace("/", "_").replace("\\", "_")
-        safe_name = f"{slug}_{safe_name}"
+        raise ValueError(
+            f"Invalid filename '{filename}': directory components are not allowed"
+        )
 
     file_path = scripts_dir / safe_name
 
@@ -177,7 +178,9 @@ def run_python_script(
     Returns:
         dict with keys: exit_code, stdout, stderr, timed_out
     """
-    env = os.environ.copy()
+    # Use an allowlist to prevent leaking secrets (API keys, credentials) to
+    # user-generated scripts. INVENTOR_FILE is the only variable scripts need.
+    env = {k: v for k, v in os.environ.items() if k in SAFE_ENV_VARS}
     if file_path:
         env["INVENTOR_FILE"] = file_path
 
@@ -278,8 +281,11 @@ def run_ilogic_rule(
                 "error": "iLogic automation interface not available. Ensure iLogic is installed.",
             }
 
-        # Run the rule text directly
-        # Note: iLogic Automation.RunRuleExternal or similar method
+        # Run the rule text directly.
+        # NOTE: The exact iLogic COM method name (RunRule / RunRuleExternal /
+        # RunExternalRule) varies by Inventor version and has not been verified
+        # against live COM documentation. This path is experimental — if it fails
+        # the exception is caught below and returned as an error dict.
         result = ilogic_auto.RunRule(doc, "GeneratedRule", content)
 
         return {
@@ -357,7 +363,7 @@ def get_script_content(filename: str) -> tuple[str, str]:
     scripts_dir = ensure_scripts_dir()
     # Prevent path traversal
     safe_path = (scripts_dir / filename).resolve()
-    if not str(safe_path).startswith(str(scripts_dir.resolve())):
+    if not safe_path.is_relative_to(scripts_dir.resolve()):
         raise ValueError(f"Invalid filename: '{filename}'")
     if not safe_path.is_file():
         raise FileNotFoundError(f"Script not found: {filename}")

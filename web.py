@@ -51,6 +51,7 @@ class Session:
 class SessionManager:
     def __init__(self) -> None:
         self.active_session: Session | None = None
+        self._lock = asyncio.Lock()
 
 
 session_manager = SessionManager()
@@ -132,7 +133,7 @@ async def download_script(filename: str):
     from fastapi import HTTPException
     from script_generator import SCRIPTS_DIR
     resolved = (SCRIPTS_DIR / filename).resolve()
-    if not str(resolved).startswith(str(SCRIPTS_DIR.resolve())):
+    if not resolved.is_relative_to(SCRIPTS_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid filename")
     if not resolved.exists():
         raise HTTPException(status_code=404, detail="Script not found")
@@ -415,14 +416,14 @@ async def _handle_chat(session: Session, data: dict) -> None:
 
 @app.websocket("/ws/chat")
 async def chat_ws(ws: WebSocket):
-    if session_manager.active_session is not None:
-        await ws.accept()
-        await ws.send_json({"type": "error", "message": "Another session is active."})
-        await ws.close()
-        return
-
-    session = Session(ws=ws)
-    session_manager.active_session = session
+    async with session_manager._lock:
+        if session_manager.active_session is not None:
+            await ws.accept()
+            await ws.send_json({"type": "error", "message": "Another session is active."})
+            await ws.close()
+            return
+        session = Session(ws=ws)
+        session_manager.active_session = session
     await ws.accept()
 
     try:

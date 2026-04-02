@@ -28,6 +28,15 @@ PROVIDER_PRESETS = {
 
 logger = logging.getLogger(__name__)
 
+# Allowlist of environment variables safe to pass to subprocess calls.
+# Using an allowlist (rather than a denylist) prevents leaking secrets like
+# API keys, database passwords, or cloud credentials to child processes.
+SAFE_ENV_VARS = frozenset({
+    "PATH", "HOME", "USER", "SHELL", "LANG", "LC_CTYPE", "LC_ALL",
+    "TMPDIR", "TEMP", "TERM", "USERPROFILE", "PATHEXT", "SYSTEMROOT",
+    "COMSPEC", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "NODE_PATH",
+})
+
 
 @dataclass
 class ToolCall:
@@ -233,9 +242,6 @@ Your response (JSON only):"""
         # Use an allowlist to pass only safe environment variables to the subprocess.
         # This prevents leaking sensitive variables (API keys, database passwords, cloud
         # credentials) from the parent process into the claude CLI subprocess.
-        SAFE_ENV_VARS = {"PATH", "HOME", "USER", "SHELL", "LANG", "LC_CTYPE", "LC_ALL",
-                         "TMPDIR", "TEMP", "TERM", "USERPROFILE", "PATHEXT", "SYSTEMROOT",
-                         "COMSPEC", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "NODE_PATH"}
         subprocess_env = {k: v for k, v in _os.environ.items() if k in SAFE_ENV_VARS}
 
         _TIMEOUT = 300
@@ -357,9 +363,11 @@ class OpenAICompatibleClient:
     OpenAI Chat Completions API format).
     """
 
-    def __init__(self, api_key: str, base_url: str, model: str) -> None:
+    def __init__(self, api_key: str, base_url: str, model: str, max_tokens: int | None = None) -> None:
+        import os as _os
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
+        self._max_tokens = max_tokens if max_tokens is not None else int(_os.getenv("MAX_TOKENS", "4096"))
 
     def chat(
         self,
@@ -393,6 +401,7 @@ class OpenAICompatibleClient:
 
         kwargs: dict[str, Any] = {
             "model": self._model,
+            "max_tokens": self._max_tokens,
             "messages": api_messages,
         }
         if openai_tools:

@@ -12,7 +12,7 @@
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const WS_URL = `ws://${location.host}/ws/chat`;
+const WS_URL = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/chat`;
 let ws = null;
 let isRunning = false;
 let currentAgentBubble = null;   // the <div class="bubble-agent"> being built

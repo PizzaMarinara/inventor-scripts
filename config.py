@@ -51,6 +51,7 @@ class Settings:
 def get_llm_client(
     provider: str | None = None,
     model: str | None = None,
+    api_key: str | None = None,
 ) -> LLMClient:
     """
     Create and return an LLM client based on current settings.
@@ -59,8 +60,9 @@ def get_llm_client(
         provider: Override the provider from env (used by CLI --provider flag
                   and web UI per-session selection).
         model: Override the model from env (used by CLI --model flag).
+        api_key: Override the API key from env (used by web UI per-session entry).
     """
-    settings = Settings()
+    settings = Settings(api_key=api_key)
 
     # CLI/Web overrides take priority over env var
     selected_provider = provider or settings.provider
@@ -72,21 +74,23 @@ def get_llm_client(
 
     # Anthropic API
     if selected_provider == "anthropic":
-        api_key = settings.api_key
-        if not api_key:
+        resolved_key = settings.api_key
+        if not resolved_key:
+            env_var = PROVIDER_ENV_VARS.get(selected_provider, "LLM_API_KEY")
             raise ValueError(
-                "No API key configured. Set LLM_API_KEY in your .env file.\n"
+                f"No API key configured. Set {env_var} in your .env file.\n"
                 "  Get one at: https://console.anthropic.com/"
             )
-        return ClaudeLLMClient(api_key=api_key, model=selected_model)
+        return ClaudeLLMClient(api_key=resolved_key, model=selected_model)
 
     # OpenAI-compatible providers (OpenRouter, OpenAI, Groq, Together, Ollama, custom)
     if selected_provider in PROVIDER_PRESETS or selected_provider == "custom":
-        api_key = settings.api_key
-        if not api_key:
+        resolved_key = settings.api_key
+        if not resolved_key:
+            env_var = PROVIDER_ENV_VARS.get(selected_provider, "LLM_API_KEY")
             raise ValueError(
                 f"No API key configured for '{selected_provider}'. "
-                f"Set LLM_API_KEY in your .env file."
+                f"Set {env_var} in your .env file."
             )
 
         if selected_provider == "custom":
@@ -103,7 +107,7 @@ def get_llm_client(
                 default_model = selected_model
 
         return OpenAICompatibleClient(
-            api_key=api_key,
+            api_key=resolved_key,
             base_url=base_url,
             model=default_model,
         )
