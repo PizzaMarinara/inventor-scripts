@@ -65,9 +65,11 @@ class ClaudeLLMClient:
 
     DEFAULT_MODEL = "claude-opus-4-5"
 
-    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None, max_tokens: int | None = None) -> None:
+        import os
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model or self.DEFAULT_MODEL
+        self._max_tokens = max_tokens or int(os.getenv("MAX_TOKENS", "4096"))
 
     def chat(
         self,
@@ -92,7 +94,7 @@ class ClaudeLLMClient:
 
         kwargs: dict[str, Any] = {
             "model": self._model,
-            "max_tokens": 4096,
+            "max_tokens": self._max_tokens,
             "messages": messages,
         }
         if anthropic_tools:
@@ -226,12 +228,13 @@ Your response (JSON only):"""
         if self._model:
             cmd.extend(["--model", self._model])
 
-        # Strip ANTHROPIC_API_KEY from the subprocess environment: if .env contains
-        # the placeholder value (sk-ant-...) copied from .env.example, the claude CLI
-        # would try to use it instead of the OAuth session credentials, causing
-        # "invalid API key" errors even when the user is correctly logged in.
         import os as _os
-        subprocess_env = {k: v for k, v in _os.environ.items() if k != "ANTHROPIC_API_KEY"}
+
+        # Use an allowlist to pass only safe environment variables to the subprocess.
+        # This prevents leaking sensitive variables (API keys, database passwords, cloud
+        # credentials) from the parent process into the claude CLI subprocess.
+        SAFE_ENV_VARS = {"PATH", "HOME", "TEMP", "USERPROFILE", "PATHEXT", "SYSTEMROOT", "COMSPEC"}
+        subprocess_env = {k: v for k, v in _os.environ.items() if k in SAFE_ENV_VARS}
 
         _TIMEOUT = 300
         _MAX_RETRIES = 2
@@ -250,21 +253,21 @@ Your response (JSON only):"""
                 break
             except FileNotFoundError:
                 raise RuntimeError(
-                    "Claude Code CLI non trovato. "
-                    "Installarlo con: npm install -g @anthropic-ai/claude-code\n"
-                    "Dopo l'installazione riavviare PowerShell/terminale e riprovare.\n"
-                    "In alternativa usare ClaudeLLMClient con ANTHROPIC_API_KEY."
+                    "Claude Code CLI not found. "
+                    "Install with: npm install -g @anthropic-ai/claude-code\n"
+                    "After installation, restart your terminal and try again.\n"
+                    "Alternatively, use ClaudeLLMClient with ANTHROPIC_API_KEY."
                 )
             except subprocess.TimeoutExpired:
                 if _attempt < _MAX_RETRIES:
                     logger.warning(
-                        "Claude Code CLI timeout (tentativo %d/%d), nuovo tentativo...",
+                        "Claude Code CLI timeout (attempt %d/%d), retrying...",
                         _attempt + 1, _MAX_RETRIES + 1,
                     )
                 else:
                     raise RuntimeError(
-                        f"Claude Code CLI scaduto dopo {_MAX_RETRIES + 1} tentativi "
-                        f"({_TIMEOUT}s ciascuno)."
+                        f"Claude Code CLI timed out after {_MAX_RETRIES + 1} attempts "
+                        f"({_TIMEOUT}s each)."
                     )
 
         # Surface stderr / non-zero exit as a clear RuntimeError so callers
@@ -273,9 +276,9 @@ Your response (JSON only):"""
             stderr = proc.stderr.strip()
             stdout = proc.stdout.strip()
             raise RuntimeError(
-                f"Claude Code CLI fallito (exit {proc.returncode}).\n"
-                f"  stderr: {stderr or '(vuoto)'}\n"
-                f"  stdout: {stdout or '(vuoto)'}"
+                f"Claude Code CLI failed (exit {proc.returncode}).\n"
+                f"  stderr: {stderr or '(empty)'}\n"
+                f"  stdout: {stdout or '(empty)'}"
             )
 
         output = proc.stdout.strip()
