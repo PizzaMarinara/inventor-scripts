@@ -188,7 +188,8 @@ def _collect_all_occurrence_params(
                 if file_path not in result:
                     try:
                         out_of_scope = not Path(file_path).resolve().is_relative_to(scope_root)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("Could not resolve scope for %s: %s", file_path, e)
                         out_of_scope = True
 
                     error = None
@@ -221,13 +222,13 @@ def _collect_all_occurrence_params(
                         _collect_all_occurrence_params(
                             sub_doc, app, full_name, _depth + 1, result, scope_root
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Could not recurse into sub-assembly %s: %s", full_name, e)
 
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.debug("Could not read occurrence %s: %s", full_name, e)
+    except Exception as e:
+        logger.debug("Could not iterate occurrences: %s", e)
 
 
 def extract_all_occurrence_parameters(doc: object, app: object) -> dict[str, dict[str, Any]]:
