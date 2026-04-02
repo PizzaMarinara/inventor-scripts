@@ -4,10 +4,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",          # Default LLM provider
+    "openai>=1.0.0",              # OpenAI-compatible API provider support
     "typer>=0.12.0",              # CLI
     "rich>=13.0.0",               # Terminal output
     "pydantic>=2.0.0",            # Data validation
-    "python-dotenv>=1.0.0",       # Load ANTHROPIC_API_KEY from .env
+    "python-dotenv>=1.0.0",       # Load LLM_API_KEY from .env
     "fastapi>=0.111.0",           # Web framework
     "uvicorn[standard]>=0.29.0",  # ASGI server
     "jinja2>=3.1.0",              # HTML templating
