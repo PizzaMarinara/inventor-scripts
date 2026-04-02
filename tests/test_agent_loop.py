@@ -180,6 +180,50 @@ def test_run_streaming_max_iterations_emits_done():
     assert done_events[0].iterations == 2
 
 
+def test_max_iterations_does_not_corrupt_history():
+    """H3 regression: _history must not be mutated when max iterations is hit."""
+    always_tool = LLMResponse(
+        stop_reason="tool_use",
+        tool_calls=[ToolCall(id="t1", name="describe_model", input={})],
+        assistant_content=[],
+    )
+    llm = MagicMock()
+    llm.chat.return_value = always_tool
+
+    loop = AgentLoop(llm=llm, executor=ToolExecutor(doc=make_mock_doc(), conn=MagicMock()), max_iterations=2)
+    list(loop.run_streaming("loop forever"))
+
+    assert loop._history == [], (
+        f"Expected _history to remain empty on max iterations, got: {loop._history}"
+    )
+
+
+def test_empty_assistant_message_uses_fallback_and_logs_warning():
+    """L2 regression: empty assistant content must fall back to '(no response)' and log a warning."""
+    empty_response = LLMResponse(
+        stop_reason="end_turn",
+        text="",
+        assistant_content=[],
+    )
+    llm = make_mock_llm([empty_response])
+
+    loop = AgentLoop(llm=llm, executor=ToolExecutor(doc=make_mock_doc(), conn=MagicMock()))
+
+    with patch("agent.loop.logger") as mock_logger:
+        events = list(loop.run_streaming("hello"))
+
+    # The fallback text must be stored in history
+    assert any(
+        msg.get("content") == "(no response)"
+        for msg in loop._history
+        if msg.get("role") == "assistant"
+    ), f"Expected '(no response)' fallback in history, got: {loop._history}"
+
+    # A warning must have been logged
+    mock_logger.warning.assert_called_once()
+    assert "empty" in mock_logger.warning.call_args[0][0].lower()
+
+
 def test_history_persists_between_run_streaming_calls():
     """Second call to run_streaming must include the first turn in the messages list."""
     first_response = LLMResponse(stop_reason="end_turn", text="First reply.")
