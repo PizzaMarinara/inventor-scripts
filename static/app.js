@@ -5,6 +5,7 @@
  *   - Rendering server events: tool_start, tool_result, done, error
  *   - File list / outputs list population from REST API
  *   - Parameters table rendering when done event contains a JSON block
+ *   - Script management: list, view, run, download
  */
 
 "use strict";
@@ -71,6 +72,10 @@ function handleEvent(event) {
         case "error":
             showErrorAlert(event.message);
             setRunning(false);
+            break;
+
+        case "script_list":
+            handleScriptListEvent(event);
             break;
 
         default:
@@ -276,4 +281,112 @@ async function refreshOutputsList() {
 document.addEventListener("DOMContentLoaded", () => {
     loadFileList();
     refreshOutputsList();
+    loadScriptsList();
 });
+
+// ── Script management ─────────────────────────────────────────────────────────
+
+let currentScriptFilename = null;
+
+async function loadScriptsList() {
+    try {
+        const resp = await fetch("/api/scripts");
+        const { scripts } = await resp.json();
+        renderScriptsList(scripts);
+    } catch (e) {
+        console.warn("[scripts] could not load scripts list", e);
+    }
+}
+
+function renderScriptsList(scripts) {
+    const ul = document.getElementById("scripts-list");
+    ul.innerHTML = "";
+    if (!scripts || scripts.length === 0) {
+        const li = document.createElement("li");
+        li.style.color = "#9ca3af";
+        li.textContent = "No scripts yet.";
+        ul.appendChild(li);
+        return;
+    }
+    scripts.forEach((s) => {
+        const li = document.createElement("li");
+        const badge = document.createElement("span");
+        badge.className = `script-type-badge ${s.type}`;
+        badge.textContent = s.type === "python" ? "PY" : "iL";
+        badge.title = s.type === "python" ? "Python script" : "iLogic rule";
+
+        const link = document.createElement("a");
+        link.href = "#";
+        link.textContent = s.filename;
+        link.title = s.description || s.filename;
+        link.addEventListener("click", (e) => {
+            e.preventDefault();
+            openScriptViewer(s.filename);
+        });
+
+        li.appendChild(badge);
+        li.appendChild(link);
+        if (s.description) {
+            const desc = document.createElement("span");
+            desc.className = "script-desc";
+            desc.textContent = s.description;
+            desc.title = s.description;
+            li.appendChild(desc);
+        }
+        ul.appendChild(li);
+    });
+}
+
+async function openScriptViewer(filename) {
+    try {
+        const resp = await fetch(`/api/scripts/${encodeURIComponent(filename)}`);
+        if (!resp.ok) throw new Error("Not found");
+        const data = await resp.json();
+        currentScriptFilename = filename;
+
+        document.getElementById("script-modal-title").textContent = filename;
+        document.getElementById("script-modal-code").textContent = data.content;
+        document.getElementById("script-modal-download").href = `/api/scripts/download/${encodeURIComponent(filename)}`;
+        document.getElementById("script-modal-download").textContent = "Download";
+        document.getElementById("script-modal-run").disabled = isRunning;
+
+        document.getElementById("script-modal").classList.remove("hidden");
+    } catch (e) {
+        showErrorAlert(`Could not load script: ${e.message}`);
+    }
+}
+
+function closeScriptViewer() {
+    document.getElementById("script-modal").classList.add("hidden");
+    currentScriptFilename = null;
+}
+
+function runCurrentScript() {
+    if (!currentScriptFilename || !ws || isRunning) return;
+    ws.send(JSON.stringify({ type: "run_script", filename: currentScriptFilename }));
+    closeScriptViewer();
+    setRunning(true);
+}
+
+// Modal event listeners
+document.getElementById("script-modal-close").addEventListener("click", closeScriptViewer);
+document.getElementById("script-modal-run").addEventListener("click", runCurrentScript);
+
+// Close modal on overlay click (outside content)
+document.getElementById("script-modal").addEventListener("click", (e) => {
+    if (e.target.id === "script-modal") {
+        closeScriptViewer();
+    }
+});
+
+// Close modal on Escape key
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !document.getElementById("script-modal").classList.contains("hidden")) {
+        closeScriptViewer();
+    }
+});
+
+// Handle script_list events from WebSocket
+function handleScriptListEvent(event) {
+    renderScriptsList(event.scripts);
+}

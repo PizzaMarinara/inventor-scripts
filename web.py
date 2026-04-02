@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from config import get_llm_client
 from agent.loop import AgentLoop, StreamEvent, ToolExecutor
 from inventor_api import InventorConnection
+from script_generator import SCRIPTS_DIR
 
 BASE_DIR = Path(__file__).parent
 
@@ -94,7 +95,176 @@ async def download_file(filename: str):
     return FileResponse(str(resolved), filename=resolved.name)
 
 
+# ── Script REST endpoints ─────────────────────────────────────────────────────
+
+
+@app.get("/api/scripts")
+async def list_scripts():
+    """List all generated scripts with metadata."""
+    from script_generator import list_scripts as _list_scripts
+    try:
+        scripts = _list_scripts()
+        return {"scripts": scripts}
+    except Exception as e:
+        return {"scripts": [], "error": str(e)}
+
+
+@app.get("/api/scripts/{filename}")
+async def get_script(filename: str):
+    """Get the content of a specific script file."""
+    from fastapi import HTTPException
+    from script_generator import get_script_content
+    try:
+        content, script_type = get_script_content(filename)
+        return {"content": content, "type": script_type, "filename": filename}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Script not found")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+
+@app.get("/api/scripts/download/{filename:path}")
+async def download_script(filename: str):
+    """Download a script file."""
+    from fastapi import HTTPException
+    from script_generator import SCRIPTS_DIR
+    resolved = (SCRIPTS_DIR / filename).resolve()
+    if not str(resolved).startswith(str(SCRIPTS_DIR.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="Script not found")
+    return FileResponse(str(resolved), filename=resolved.name)
+
+
 # ── WebSocket handler ─────────────────────────────────────────────────────────
+
+
+async def _handle_run_script(session: Session, data: dict) -> None:
+    """Execute a saved script and stream results back over WebSocket."""
+    from script_generator import (
+        get_script_content,
+        run_python_script,
+        run_ilogic_rule,
+        SCRIPTS_DIR,
+    )
+    filename = data.get("filename", "")
+    if not filename:
+        await session.ws.send_json({"type": "error", "message": "No filename provided"})
+        return
+
+    try:
+        content, script_type = get_script_content(filename)
+    except FileNotFoundError:
+        await session.ws.send_json({"type": "error", "message": f"Script not found: {filename}"})
+        return
+    except ValueError:
+        await session.ws.send_json({"type": "error", "message": f"Invalid filename: {filename}"})
+        return
+
+    script_path = (SCRIPTS_DIR / filename).resolve()
+    await session.ws.send_json({
+        "type": "tool_start",
+        "tool": "run_script",
+        "input": {"filename": filename, "type": script_type},
+    })
+
+    loop_obj = asyncio.get_event_loop()
+
+    if script_type == "python":
+        def _run_python():
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except (ImportError, OSError):
+                pass
+            try:
+                return run_python_script(script_path, file_path=session.active_file)
+            finally:
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
+
+        result = await loop_obj.run_in_executor(None, _run_python)
+        # Stream stdout line by line
+        for line in result.get("stdout", "").split("\n"):
+            if line.strip():
+                await session.ws.send_json({
+                    "type": "text_delta",
+                    "content": line,
+                })
+        if result.get("stderr"):
+            for line in result["stderr"].split("\n"):
+                if line.strip():
+                    await session.ws.send_json({
+                        "type": "text_delta",
+                        "content": f"[stderr] {line}",
+                    })
+        await session.ws.send_json({
+            "type": "tool_result",
+            "tool": "run_script",
+            "result": {
+                "exit_code": result.get("exit_code", -1),
+                "success": result.get("exit_code", -1) == 0,
+                "timed_out": result.get("timed_out", False),
+            },
+        })
+
+    elif script_type == "ilogic":
+        def _run_ilogic():
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except (ImportError, OSError):
+                pass
+            try:
+                conn = None
+                if session.conn:
+                    conn = session.conn
+                return run_ilogic_rule(content, file_path=session.active_file, conn=conn)
+            finally:
+                try:
+                    import pythoncom
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
+
+        result = await loop_obj.run_in_executor(None, _run_ilogic)
+        if result.get("output"):
+            await session.ws.send_json({
+                "type": "text_delta",
+                "content": result["output"],
+            })
+        if result.get("error"):
+            await session.ws.send_json({
+                "type": "text_delta",
+                "content": f"[error] {result['error']}",
+            })
+        await session.ws.send_json({
+            "type": "tool_result",
+            "tool": "run_script",
+            "result": {
+                "success": result.get("success", False),
+                "error": result.get("error", ""),
+            },
+        })
+
+
+async def _handle_list_scripts_ws(session: Session) -> None:
+    """Send the current list of scripts over WebSocket."""
+    from script_generator import list_scripts as _list_scripts
+    try:
+        scripts = _list_scripts()
+        await session.ws.send_json({
+            "type": "script_list",
+            "scripts": scripts,
+        })
+    except Exception as e:
+        await session.ws.send_json({
+            "type": "error",
+            "message": f"Failed to list scripts: {e}",
+        })
 
 async def _stream_events(
     session: Session,
@@ -172,6 +342,7 @@ async def _stream_events(
 
     try:
         events = await loop_obj.run_in_executor(None, _blocking)
+        script_was_generated = False
         for event in events:
             if session.cancel_event.is_set():
                 break
@@ -181,6 +352,8 @@ async def _stream_events(
             elif event.type == "tool_start":
                 payload["tool"] = event.tool_name
                 payload["input"] = event.tool_input
+                if event.tool_name == "generate_script":
+                    script_was_generated = True
             elif event.type == "tool_result":
                 payload["tool"] = event.tool_name
                 payload["result"] = str(event.result)
@@ -190,6 +363,18 @@ async def _stream_events(
             elif event.type == "error":
                 payload["message"] = event.content
             await session.ws.send_json(payload)
+
+        # If a script was generated, send updated script list to refresh sidebar
+        if script_was_generated:
+            from script_generator import list_scripts as _list_scripts
+            try:
+                scripts = _list_scripts()
+                await session.ws.send_json({
+                    "type": "script_list",
+                    "scripts": scripts,
+                })
+            except Exception:
+                pass
     except Exception as exc:
         await session.ws.send_json({"type": "error", "message": str(exc)})
     finally:
@@ -239,6 +424,10 @@ async def chat_ws(ws: WebSocket):
                 await _handle_chat(session, data)
             elif data.get("type") == "cancel":
                 session.cancel_event.set()
+            elif data.get("type") == "run_script":
+                await _handle_run_script(session, data)
+            elif data.get("type") == "list_scripts":
+                await _handle_list_scripts_ws(session)
     except WebSocketDisconnect:
         pass
     finally:

@@ -63,6 +63,19 @@ Rules:
 - If describe_model returns "unknown" for the file name or reports no parameters,
   warn the engineer that Inventor may not have an active document open.
 
+Script generation (generate_script tool):
+- Use generate_script when: the task is complex, involves multiple steps,
+  might need to be repeated, or involves conditional logic.
+- If the user explicitly asks for a script, you MUST generate one regardless of task simplicity.
+- If unsure whether to generate a script or execute directly, ask the user:
+  "Would you like me to create a reusable script for this, or just do it now?"
+- Python scripts must be complete standalone programs: include win32com.client imports,
+  COM connection setup (Dispatch('Inventor.Application')), error handling (try/except),
+  and cleanup (app.Quit() or proper release). Use the INVENTOR_FILE environment variable
+  to determine which file to operate on if available.
+- iLogic rules are simpler — write the rule body directly without imports or COM setup.
+- After generating a script, inform the user of the filename and what it does.
+
 Occurrence tools (assembly only):
 - Occurrence names include a :N suffix (e.g. "maincyl:1", not "maincyl"). Always use
   the full name exactly as shown in describe_model output. Do not strip the suffix.
@@ -188,6 +201,42 @@ class ToolExecutor:
 
         elif name == "get_all_occurrence_parameters":
             return extract_all_occurrence_parameters(self.doc, self.conn.app)
+
+        elif name == "generate_script":
+            from script_generator import (
+                validate_python_script,
+                validate_ilogic_rule,
+                save_script,
+            )
+            script_type = inp.get("script_type", "python")
+            script_content = inp.get("script_content", "")
+            description = inp.get("description", "Generated script")
+            filename = inp.get("filename", None)
+
+            if script_type == "python":
+                is_valid, error_msg = validate_python_script(script_content)
+            elif script_type == "ilogic":
+                is_valid, error_msg = validate_ilogic_rule(script_content)
+            else:
+                return {"error": f"Invalid script type: '{script_type}'. Must be 'python' or 'ilogic'."}
+
+            if not is_valid:
+                return {"error": f"Script validation failed: {error_msg}"}
+
+            try:
+                saved_path = save_script(script_content, script_type, description, filename)
+                preview_lines = script_content.split("\n")[:5]
+                preview = "\n".join(preview_lines)
+                if len(script_content.split("\n")) > 5:
+                    preview += "\n... (truncated)"
+                return {
+                    "saved_to": str(saved_path),
+                    "script_type": script_type,
+                    "description": description,
+                    "preview": preview,
+                }
+            except Exception as e:
+                return {"error": f"Failed to save script: {e}"}
 
         else:
             return {"error": f"Unknown tool: {name}"}

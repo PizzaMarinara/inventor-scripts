@@ -184,3 +184,196 @@ def test_websocket_rejects_second_connection_when_session_active():
         assert "active" in msg["message"].lower()
 
     session_manager.active_session = None  # cleanup
+
+
+# ── Script REST endpoint tests ────────────────────────────────────────────────
+
+
+def test_api_scripts_lists_scripts(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "20260402_120000_test.py").write_text("# Description : Test script\nprint('hi')")
+    (scripts_dir / "rule.ilogic").write_text("' Description : iLogic rule\nParameter('X') = 10")
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["scripts"]) == 2
+
+
+def test_api_scripts_returns_empty_when_no_scripts(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts")
+        assert resp.status_code == 200
+        assert resp.json()["scripts"] == []
+
+
+def test_api_scripts_get_content(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "test.py").write_text("print('hello')")
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts/test.py")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "print('hello')"
+        assert data["type"] == "python"
+
+
+def test_api_scripts_get_ilogic_content(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "rule.ilogic").write_text("Parameter('X') = 10")
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts/rule.ilogic")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["type"] == "ilogic"
+
+
+def test_api_scripts_get_missing_returns_404(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts/nonexistent.py")
+        assert resp.status_code == 404
+
+
+def test_api_scripts_download_returns_file(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "test.py").write_text("print('hi')")
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts/download/test.py")
+        assert resp.status_code == 200
+        assert resp.content == b"print('hi')"
+
+
+def test_api_scripts_download_rejects_path_traversal(tmp_path, monkeypatch):
+    from web import app
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        client = TestClient(app)
+        resp = client.get("/api/scripts/download/..%2Fweb.py")
+        assert resp.status_code == 400
+
+
+# ── WebSocket script tests ────────────────────────────────────────────────────
+
+
+def test_websocket_run_python_script(tmp_path, monkeypatch):
+    """Running a Python script should produce tool_start → text_delta → tool_result."""
+    from web import app, session_manager, Session
+
+    session_manager.active_session = None
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "test.py").write_text("print('script output')")
+    monkeypatch.chdir(tmp_path)
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.ws = AsyncMock()
+    mock_session.active_file = None
+    mock_session.conn = None
+    session_manager.active_session = mock_session
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        from web import _handle_run_script
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(
+            _handle_run_script(mock_session, {"filename": "test.py"})
+        )
+
+    # Check that events were sent in the right order
+    calls = mock_session.ws.send_json.call_args_list
+    types = [c[0][0]["type"] for c in calls]
+    assert "tool_start" in types
+    assert "text_delta" in types
+    assert "tool_result" in types
+    # tool_start must come before tool_result
+    assert types.index("tool_start") < types.index("tool_result")
+
+
+def test_websocket_run_script_missing_file(tmp_path, monkeypatch):
+    """Running a nonexistent script should return an error."""
+    from web import app, session_manager, Session
+
+    session_manager.active_session = None
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.ws = AsyncMock()
+    session_manager.active_session = mock_session
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        from web import _handle_run_script
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(
+            _handle_run_script(mock_session, {"filename": "nonexistent.py"})
+        )
+
+    calls = mock_session.ws.send_json.call_args_list
+    assert len(calls) == 1
+    assert calls[0][0][0]["type"] == "error"
+
+
+def test_websocket_list_scripts(tmp_path, monkeypatch):
+    """list_scripts WS message should return the script list."""
+    from web import app, session_manager, Session
+
+    session_manager.active_session = None
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "test.py").write_text("# Description : Test\nprint('hi')")
+    monkeypatch.chdir(tmp_path)
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.ws = AsyncMock()
+    session_manager.active_session = mock_session
+
+    with patch("script_generator.SCRIPTS_DIR", scripts_dir):
+        from web import _handle_list_scripts_ws
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(
+            _handle_list_scripts_ws(mock_session)
+        )
+
+    calls = mock_session.ws.send_json.call_args_list
+    assert len(calls) == 1
+    msg = calls[0][0][0]
+    assert msg["type"] == "script_list"
+    assert len(msg["scripts"]) == 1

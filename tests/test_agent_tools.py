@@ -45,7 +45,11 @@ NEW_TOOL_NAMES = {
     "get_occurrence_parameters",
     "set_occurrence_parameter",
     "save_occurrence_document",
+    "generate_script",
 }
+
+# Tools from NEW_TOOL_NAMES that are assembly-only (excludes general-purpose tools)
+ASSEMBLY_ONLY_NEW_TOOLS = NEW_TOOL_NAMES - {"generate_script"}
 
 
 def test_all_new_tools_present():
@@ -55,7 +59,7 @@ def test_all_new_tools_present():
 
 def test_all_new_tools_have_assembly_only_in_description():
     for tool in TOOLS:
-        if tool["name"] in NEW_TOOL_NAMES:
+        if tool["name"] in ASSEMBLY_ONLY_NEW_TOOLS:
             assert "assembly" in tool["description"].lower(), (
                 f"Tool '{tool['name']}' description must note it is assembly-only"
             )
@@ -103,3 +107,25 @@ def test_get_all_occurrence_parameters_description_mentions_assembly_and_out_of_
     desc = tool["description"].lower()
     assert "assembly" in desc
     assert "out_of_scope" in desc or "out of scope" in desc
+
+
+def test_generate_script_has_required_fields():
+    tool = get_tool_by_name("generate_script")
+    required = tool["input_schema"]["required"]
+    assert "script_content" in required
+    assert "script_type" in required
+    assert "description" in required
+    assert "filename" not in required  # filename is optional
+
+
+def test_generate_script_type_is_enum():
+    tool = get_tool_by_name("generate_script")
+    script_type_prop = tool["input_schema"]["properties"]["script_type"]
+    assert script_type_prop["enum"] == ["python", "ilogic"]
+
+
+def test_generate_script_mentions_user_override_in_description():
+    tool = get_tool_by_name("generate_script")
+    desc = tool["description"].lower()
+    assert "must" in desc  # Must generate when user asks
+    assert "ask" in desc   # Ask when unsure

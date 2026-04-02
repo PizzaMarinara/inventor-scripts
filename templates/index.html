@@ -51,6 +51,11 @@
         <h3>Outputs</h3>
         <ul id="outputs-list"></ul>
       </section>
+
+      <section id="scripts-section">
+        <h3>Scripts</h3>
+        <ul id="scripts-list"></ul>
+      </section>
     </aside>
 
     <!-- RIGHT PANEL -->
@@ -64,6 +69,23 @@
         <button id="send-btn" type="submit">Send</button>
       </form>
     </main>
+
+    <!-- Script Viewer Modal -->
+    <div id="script-modal" class="modal-overlay hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="script-modal-title">Script</h3>
+          <button id="script-modal-close" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <pre id="script-modal-code"></pre>
+        </div>
+        <div class="modal-footer">
+          <button id="script-modal-run" class="btn-primary">Run</button>
+          <a id="script-modal-download" class="btn-secondary" download>Download</a>
+        </div>
+      </div>
+    </div>
 
   </div>
   <script src="/static/app.js"></script>

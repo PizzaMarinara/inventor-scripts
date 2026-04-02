@@ -33,6 +33,8 @@ class ToolName(StrEnum):
     SET_OCCURRENCE_PARAMETER = "set_occurrence_parameter"
     SAVE_OCCURRENCE_DOCUMENT = "save_occurrence_document"
     GET_ALL_OCCURRENCE_PARAMETERS = "get_all_occurrence_parameters"
+    # Script generation
+    GENERATE_SCRIPT = "generate_script"
 
 
 TOOLS: list[dict] = [
@@ -321,6 +323,50 @@ TOOLS: list[dict] = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+    {
+        "name": ToolName.GENERATE_SCRIPT,
+        "description": (
+            "Generate and save a reusable automation script for Inventor. "
+            "Use this when: the task is complex, involves multiple steps, "
+            "might need to be repeated, or the user explicitly requests a script. "
+            "If the user asks for a script, you MUST call this tool regardless of task simplicity. "
+            "If unsure whether to generate a script or execute directly, ask the user: "
+            "'Would you like me to create a reusable script for this, or just do it now?' "
+            "Two script types are supported:\n"
+            "- 'python': Standalone .py scripts using win32com.client. These run externally "
+            "and must handle their own COM connection, error handling, and cleanup.\n"
+            "- 'ilogic': iLogic rules that run inside Inventor. These are simpler, don't need "
+            "COM setup, but have a more limited API.\n"
+            "Write complete, production-ready code with proper error handling."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "script_content": {
+                    "type": "string",
+                    "description": (
+                        "The complete script/rule text. For Python scripts, include all imports, "
+                        "COM connection logic, error handling, and cleanup. For iLogic rules, "
+                        "write the rule body directly (no imports needed)."
+                    ),
+                },
+                "script_type": {
+                    "type": "string",
+                    "enum": ["python", "ilogic"],
+                    "description": "'python' for standalone .py scripts, 'ilogic' for iLogic rules",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Brief description of what the script does (used for filename and listing)",
+                },
+                "filename": {
+                    "type": "string",
+                    "description": "Optional custom filename. Auto-generated from description if omitted.",
+                },
+            },
+            "required": ["script_content", "script_type", "description"],
         },
     },
 ]

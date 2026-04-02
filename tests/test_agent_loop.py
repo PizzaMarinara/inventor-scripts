@@ -362,3 +362,104 @@ def test_executor_dispatches_get_all_occurrence_parameters(tmp_path, monkeypatch
     assert file_path in result
     assert result[file_path]["out_of_scope"] is False
     assert "Length" in result[file_path]["parameters"]
+
+
+# ── generate_script tool dispatch ──────────────────────────────────────────────
+
+
+def test_executor_dispatches_generate_script_python(tmp_path, monkeypatch):
+    """ToolExecutor should validate and save a Python script."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(
+        id="t1",
+        name="generate_script",
+        input={
+            "script_content": "print('hello')",
+            "script_type": "python",
+            "description": "Test script",
+        },
+    )
+    result = executor.execute(tc)
+    assert "saved_to" in result
+    assert result["script_type"] == "python"
+    assert result["description"] == "Test script"
+    assert "preview" in result
+
+
+def test_executor_dispatches_generate_script_ilogic(tmp_path, monkeypatch):
+    """ToolExecutor should validate and save an iLogic rule."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(
+        id="t1",
+        name="generate_script",
+        input={
+            "script_content": "Parameter('Width') = 100",
+            "script_type": "ilogic",
+            "description": "Change width",
+        },
+    )
+    result = executor.execute(tc)
+    assert "saved_to" in result
+    assert result["script_type"] == "ilogic"
+
+
+def test_executor_generate_script_rejects_invalid_python(tmp_path, monkeypatch):
+    """ToolExecutor should reject Python scripts with syntax errors."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(
+        id="t1",
+        name="generate_script",
+        input={
+            "script_content": "print('missing paren'",
+            "script_type": "python",
+            "description": "Bad script",
+        },
+    )
+    result = executor.execute(tc)
+    assert "error" in result
+    assert "validation" in result["error"].lower()
+
+
+def test_executor_generate_script_rejects_empty_content(tmp_path, monkeypatch):
+    """ToolExecutor should reject empty script content."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(
+        id="t1",
+        name="generate_script",
+        input={
+            "script_content": "",
+            "script_type": "python",
+            "description": "Empty",
+        },
+    )
+    result = executor.execute(tc)
+    assert "error" in result
+
+
+def test_executor_generate_script_rejects_invalid_type(tmp_path, monkeypatch):
+    """ToolExecutor should reject unknown script types."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(
+        id="t1",
+        name="generate_script",
+        input={
+            "script_content": "x = 1",
+            "script_type": "javascript",
+            "description": "Wrong type",
+        },
+    )
+    result = executor.execute(tc)
+    assert "error" in result
+    assert "javascript" in result["error"]
+
+
+def test_system_prompt_contains_script_generation_guidance():
+    from agent.loop import SYSTEM_PROMPT
+    assert "generate_script" in SYSTEM_PROMPT
+    assert "must" in SYSTEM_PROMPT.lower()  # Must generate when user asks
+    assert "ask" in SYSTEM_PROMPT.lower()   # Ask when unsure

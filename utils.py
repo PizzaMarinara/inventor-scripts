@@ -8,8 +8,8 @@ BASE_DIR = Path(__file__).parent
 
 
 def ensure_dirs() -> None:
-    """Create input/ and output/ directories if they don't exist."""
-    for name in ("input", "output"):
+    """Create input/, output/, and scripts/ directories if they don't exist."""
+    for name in ("input", "output", "scripts"):
         (Path.cwd() / name).mkdir(parents=True, exist_ok=True)
 
 
