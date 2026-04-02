@@ -284,8 +284,8 @@ async def _stream_events(
     cannot be safely used from another thread.  pythoncom.CoInitialize() initialises
     COM for the worker thread; CoUninitialize() cleans up on exit.
     """
-    loop_obj = asyncio.get_event_loop()
     cwd = Path.cwd()  # capture on main thread before spawning worker
+    loop_obj = asyncio.get_event_loop()
     logger.info("Starting agent stream for file=%s", file_name or "(active document)")
 
     def _blocking() -> list[StreamEvent]:
