@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,8 @@ from inventor_api import InventorConnection
 from script_generator import SCRIPTS_DIR
 
 BASE_DIR = Path(__file__).parent
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Inventor Automation Web UI")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -282,6 +285,8 @@ async def _stream_events(
     COM for the worker thread; CoUninitialize() cleans up on exit.
     """
     loop_obj = asyncio.get_event_loop()
+    cwd = Path.cwd()  # capture on main thread before spawning worker
+    logger.info("Starting agent stream for file=%s", file_name or "(active document)")
 
     def _blocking() -> list[StreamEvent]:
         # ── COM thread initialisation ────────────────────────────────────────
@@ -298,14 +303,14 @@ async def _stream_events(
             conn.connect(launch_if_not_running=True)
 
             if file_name:
-                doc = conn.open_document((Path.cwd() / "input" / file_name).resolve())
+                doc = conn.open_document((cwd / "input" / file_name).resolve())
                 if doc is None:
                     return [StreamEvent(
                         type="error",
                         content=(
-                            f"Inventor non ha restituito un documento per '{file_name}'. "
-                            "Verifica che il file esista nella cartella input/ e sia un "
-                            "file .ipt/.iam/.ipn valido."
+                            f"Inventor did not return a document for '{file_name}'. "
+                            "Verify the file exists in the input/ folder and is a valid "
+                            ".ipt/.iam/.ipn file."
                         ),
                     )]
             else:
@@ -314,8 +319,8 @@ async def _stream_events(
                     return [StreamEvent(
                         type="error",
                         content=(
-                            "Nessun documento aperto in Inventor. "
-                            "Apri un file in Inventor oppure selezionane uno dall'elenco."
+                            "No document open in Inventor. "
+                            "Open a file in Inventor or select one from the list."
                         ),
                     )]
 
@@ -342,6 +347,7 @@ async def _stream_events(
 
     try:
         events = await loop_obj.run_in_executor(None, _blocking)
+        logger.debug("Received %d events from agent", len(events))
         script_was_generated = False
         for event in events:
             if session.cancel_event.is_set():
@@ -366,6 +372,7 @@ async def _stream_events(
 
         # If a script was generated, send updated script list to refresh sidebar
         if script_was_generated:
+            logger.info("Script generated, refreshing script list")
             from script_generator import list_scripts as _list_scripts
             try:
                 scripts = _list_scripts()
@@ -376,6 +383,7 @@ async def _stream_events(
             except Exception:
                 pass
     except Exception as exc:
+        logger.error("Agent stream failed: %s", exc)
         await session.ws.send_json({"type": "error", "message": str(exc)})
     finally:
         session.is_running = False
