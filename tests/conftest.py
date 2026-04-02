@@ -48,6 +48,7 @@ def make_mock_bom_row(item_number: str, part_name: str, quantity: int) -> MagicM
     comp_def = MagicMock()
     comp_def.Document.DisplayName = part_name
     row.ComponentDefinitions.Item.return_value = comp_def
+    row.ComponentDefinitions.Count = 1
     return row
 
 

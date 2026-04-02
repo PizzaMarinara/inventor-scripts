@@ -1,7 +1,10 @@
 # extract.py
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def extract_properties(doc: object) -> dict[str, dict[str, Any]]:
@@ -14,10 +17,11 @@ def extract_properties(doc: object) -> dict[str, dict[str, Any]]:
             for prop in prop_set:
                 try:
                     result[set_name][prop.Name] = prop.Value
-                except Exception:
+                except Exception as e:
+                    logger.debug("Could not read property %s: %s", prop.Name, e)
                     result[set_name][prop.Name] = None
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not read property sets: %s", e)
     return result
 
 
@@ -56,10 +60,10 @@ def extract_parameters(doc: object) -> dict[str, dict[str, Any]]:
                         "comment": param.Comment,
                         "type":    type_tag,
                     }
-            except Exception:
-                pass  # attribute absent or collection unreadable for this doc type — skip silently
-    except Exception:
-        pass
+            except Exception as e:
+                logger.debug("Could not read %s collection: %s", collection_name, e)
+    except Exception as e:
+        logger.debug("Could not access parameters: %s", e)
     return result
 
 
@@ -81,8 +85,13 @@ def extract_bom(doc: object) -> list[dict[str, Any]]:
         for view in doc.ComponentDefinition.BOM.BOMViews:
             for row in view:
                 try:
-                    part_name = row.ComponentDefinitions.Item(1).Document.DisplayName
-                except Exception:
+                    defs = row.ComponentDefinitions
+                    if defs.Count >= 1:
+                        part_name = defs.Item(1).Document.DisplayName
+                    else:
+                        part_name = "Unknown"
+                except Exception as e:
+                    logger.debug("Could not read BOM row part name: %s", e)
                     part_name = "Unknown"
                 rows.append({
                     "item_number": row.ItemNumber,
@@ -90,12 +99,12 @@ def extract_bom(doc: object) -> list[dict[str, Any]]:
                     "quantity": row.ItemQuantity,
                     "description": _get_bom_row_description(row),
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not read BOM: %s", e)
     return rows
 
 
-def extract_occurrences(
+def _extract_occurrences_impl(
     doc: object,
     _prefix: str = "",
     _depth: int = 0,
@@ -133,15 +142,20 @@ def extract_occurrences(
                 if _depth < 5:
                     try:
                         sub_doc = occ.Definition.Document
-                        sub_occs = extract_occurrences(sub_doc, full_name, _depth + 1)
+                        sub_occs = _extract_occurrences_impl(sub_doc, full_name, _depth + 1)
                         result.extend(sub_occs)
-                    except Exception:
-                        pass  # sub-doc unloaded or not an assembly — skip silently
-            except Exception:
-                pass  # skip malformed occurrences
-    except Exception:
-        pass  # not an assembly, or Occurrences collection absent
+                    except Exception as e:
+                        logger.debug("Could not recurse into sub-assembly: %s", e)
+            except Exception as e:
+                logger.debug("Could not read occurrence: %s", e)
+    except Exception as e:
+        logger.debug("Could not read occurrences: %s", e)
     return result
+
+
+def extract_occurrences(doc: object) -> list[dict[str, Any]]:
+    """Extract all component occurrences from an .iam assembly document."""
+    return _extract_occurrences_impl(doc, _prefix="", _depth=0)
 
 
 def extract_all(doc: object) -> dict[str, Any]:
