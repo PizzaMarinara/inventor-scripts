@@ -290,6 +290,9 @@ class AgentLoop:
                     if response.assistant_content
                     else response.text
                 )
+                if not assistant_msg:
+                    logger.warning("LLM returned empty assistant content on iteration %d", iteration)
+                    assistant_msg = "(no response)"
                 self._history = messages + [
                     {"role": "assistant", "content": assistant_msg}
                 ]
@@ -339,8 +342,9 @@ class AgentLoop:
 
                 messages.append({"role": "user", "content": tool_results_block})
 
-        # Save whatever we have so the next turn still has context.
-        self._history = list(messages)
+        # On max iterations, do NOT save in-progress messages to history.
+        # The next run_streaming() call will rebuild from the last successful
+        # end_turn baseline + the new user instruction, avoiding corruption.
         yield StreamEvent(
             type="done",
             content=(
