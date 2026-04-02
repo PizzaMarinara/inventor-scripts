@@ -339,3 +339,26 @@ def test_system_prompt_contains_save_chain_guidance():
 def test_system_prompt_contains_pack_and_go_warning():
     from agent.loop import SYSTEM_PROMPT
     assert "pack" in SYSTEM_PROMPT.lower() or "portable" in SYSTEM_PROMPT.lower()
+
+
+def test_executor_dispatches_get_all_occurrence_parameters(tmp_path, monkeypatch):
+    from tests.conftest import (
+        make_mock_assembly_doc, make_mock_doc,
+        make_mock_parameter, make_occ_with_sub_doc,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    file_path = str(tmp_path / "input" / "bolt.ipt")
+    sub_doc = make_mock_doc(parameters=[make_mock_parameter("Length", "50 mm", "mm")])
+    occ = make_occ_with_sub_doc("bolt:1", file_path, sub_doc)
+    doc = make_mock_assembly_doc(occurrences=[occ])
+
+    conn = MagicMock()
+    executor = ToolExecutor(doc=doc, conn=conn)
+    tc = ToolCall(id="t1", name="get_all_occurrence_parameters", input={})
+
+    result = executor.execute(tc)
+
+    assert file_path in result
+    assert result[file_path]["out_of_scope"] is False
+    assert "Length" in result[file_path]["parameters"]

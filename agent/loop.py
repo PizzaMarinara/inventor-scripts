@@ -23,7 +23,10 @@ from typing import Any, Iterator
 from agent.llm import LLMClient, LLMResponse, ToolCall
 from agent.tools import TOOLS
 from agent.describe import describe_model
-from extract import extract_parameters, extract_bom, extract_properties, extract_occurrences
+from extract import (
+    extract_parameters, extract_bom, extract_properties,
+    extract_occurrences, extract_all_occurrence_parameters,
+)
 from modify import (
     set_parameter, set_parameters_batch, save_as, open_in_inventor,
     add_component, remove_component, set_suppressed,
@@ -182,6 +185,9 @@ class ToolExecutor:
             dest = Path.cwd() / "output" / inp["filename"]
             saved_path = save_as(sub_doc, dest)
             return {"saved_to": str(saved_path)}
+
+        elif name == "get_all_occurrence_parameters":
+            return extract_all_occurrence_parameters(self.doc, self.conn.app)
 
         else:
             return {"error": f"Unknown tool: {name}"}
