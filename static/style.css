@@ -88,6 +88,31 @@ html, body {
 #extract-btn:hover { background: #1d4ed8; }
 #extract-btn:disabled { background: #93c5fd; cursor: not-allowed; }
 
+#provider-select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+}
+
+#api-key-input {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+#api-key-input::placeholder {
+  color: #9ca3af;
+}
+
 /* Parameters table */
 #params-wrap {
   overflow-x: auto;

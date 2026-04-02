@@ -19,6 +19,22 @@
         <button id="extract-btn">Extract Parameters</button>
       </section>
 
+      <section id="provider-section">
+        <h2>Provider</h2>
+        <select id="provider-select">
+          <option value="">— default (env) —</option>
+          <option value="anthropic">Anthropic API</option>
+          <option value="claude_code">Claude Code CLI</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="openai">OpenAI</option>
+          <option value="groq">Groq</option>
+          <option value="together">Together</option>
+          <option value="ollama">Ollama</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input id="api-key-input" type="password" placeholder="API key (optional)" autocomplete="off" />
+      </section>
+
       <section id="params-section">
         <h3>Parameters</h3>
         <div id="params-wrap">

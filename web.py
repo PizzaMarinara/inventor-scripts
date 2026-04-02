@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient
+from config import get_llm_client
 from agent.loop import AgentLoop, StreamEvent, ToolExecutor
 from inventor_api import InventorConnection
 
@@ -204,27 +203,19 @@ async def _handle_chat(session: Session, data: dict) -> None:
 
     file_name: str = data.get("file") or ""
     instruction: str = data.get("message", "")
+    provider: str | None = data.get("provider")
+    model: str | None = data.get("model")
+    api_key: str | None = data.get("api_key")
 
     session.is_running = True
     session.cancel_event.clear()
 
-    # Select LLM backend — no COM involved here
-    use_claude_code = os.environ.get("CLAUDE_CODE", "false").lower() == "true"
-    if use_claude_code:
-        llm: Any = ClaudeCodeCLIClient()
-    else:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            await session.ws.send_json({
-                "type": "error",
-                "message": (
-                    "Nessun backend LLM configurato. "
-                    "Imposta CLAUDE_CODE=true oppure ANTHROPIC_API_KEY nel file .env."
-                ),
-            })
-            session.is_running = False
-            return
-        llm = ClaudeLLMClient(api_key=api_key)
+    try:
+        llm: Any = get_llm_client(provider=provider, api_key=api_key, model=model)
+    except (ValueError, EnvironmentError) as e:
+        await session.ws.send_json({"type": "error", "message": str(e)})
+        session.is_running = False
+        return
 
     await _stream_events(session, file_name, llm, instruction)
 

@@ -1,7 +1,7 @@
 # tests/test_agent_llm.py
 from unittest.mock import MagicMock, patch
 import pytest
-from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient, LLMResponse, ToolCall
+from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient, OpenAICompatibleClient, PROVIDER_PRESETS, LLMResponse, ToolCall
 
 
 def make_claude_response(tool_name: str, tool_input: dict):
@@ -137,3 +137,120 @@ def test_claude_code_cli_error_shows_raw_stderr():
         client = ClaudeCodeCLIClient()
         with pytest.raises(RuntimeError, match="unauthorized: api key invalid"):
             client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
+
+
+# ── OpenAICompatibleClient tests ──────────────────────────────────────────────
+
+
+def make_openai_response(tool_name: str, tool_input: dict, tool_id: str = "call_abc123"):
+    """Build a minimal fake OpenAI API response with a tool call."""
+    import json
+    tool_call = MagicMock()
+    tool_call.id = tool_id
+    tool_call.function.name = tool_name
+    tool_call.function.arguments = json.dumps(tool_input)
+
+    message = MagicMock()
+    message.content = None
+    message.tool_calls = [tool_call]
+
+    choice = MagicMock()
+    choice.message = message
+
+    response = MagicMock()
+    response.choices = [choice]
+    return response
+
+
+def make_openai_text_response(text: str):
+    """Build a minimal fake OpenAI API text response."""
+    message = MagicMock()
+    message.content = text
+    message.tool_calls = None
+
+    choice = MagicMock()
+    choice.message = message
+
+    response = MagicMock()
+    response.choices = [choice]
+    return response
+
+
+def test_openai_client_calls_tool():
+    fake_response = make_openai_response("describe_model", {})
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = fake_response
+
+    with patch("agent.llm.openai.OpenAI", return_value=mock_client):
+        client = OpenAICompatibleClient(
+            api_key="test-key",
+            base_url="https://example.com/v1",
+            model="gpt-4o",
+        )
+        result = client.chat(
+            messages=[{"role": "user", "content": "describe this"}],
+            tools=[],
+        )
+
+    assert result.stop_reason == "tool_use"
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "describe_model"
+    assert result.assistant_content[0]["type"] == "tool_use"
+
+
+def test_openai_client_returns_text():
+    fake_response = make_openai_text_response("The model has 3 parameters.")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = fake_response
+
+    with patch("agent.llm.openai.OpenAI", return_value=mock_client):
+        client = OpenAICompatibleClient(
+            api_key="test-key",
+            base_url="https://example.com/v1",
+            model="gpt-4o",
+        )
+        result = client.chat(
+            messages=[{"role": "user", "content": "describe"}],
+            tools=[],
+        )
+
+    assert result.stop_reason == "end_turn"
+    assert result.text == "The model has 3 parameters."
+    assert result.tool_calls == []
+
+
+def test_openai_client_prepends_system_prompt():
+    """System prompt should be prepended as a system message."""
+    fake_response = make_openai_text_response("OK")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = fake_response
+
+    with patch("agent.llm.openai.OpenAI", return_value=mock_client):
+        client = OpenAICompatibleClient(
+            api_key="test-key",
+            base_url="https://example.com/v1",
+            model="gpt-4o",
+        )
+        client.chat(
+            messages=[{"role": "user", "content": "hello"}],
+            tools=[],
+            system="You are a helpful assistant.",
+        )
+
+    call_args = mock_client.chat.completions.create.call_args
+    messages = call_args.kwargs.get("messages", call_args[1].get("messages", []))
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == "You are a helpful assistant."
+    assert messages[1]["role"] == "user"
+
+
+def test_provider_presets_contains_openrouter():
+    assert "openrouter" in PROVIDER_PRESETS
+    base_url, model = PROVIDER_PRESETS["openrouter"]
+    assert "openrouter.ai" in base_url
+
+
+def test_provider_presets_contains_openai():
+    assert "openai" in PROVIDER_PRESETS
+    base_url, model = PROVIDER_PRESETS["openai"]
+    assert "api.openai.com" in base_url

@@ -86,7 +86,9 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
     const message = document.getElementById("msg-input").value.trim();
     if (!message) return;
     const file = document.getElementById("file-select").value;
-    ws.send(JSON.stringify({ type: "chat", message, file }));
+    const provider = document.getElementById("provider-select").value || undefined;
+    const apiKey = document.getElementById("api-key-input").value || undefined;
+    ws.send(JSON.stringify({ type: "chat", message, file, provider, api_key: apiKey }));
     appendUserBubble(message);
     document.getElementById("msg-input").value = "";
     currentAgentBubble = null;
@@ -107,7 +109,9 @@ document.getElementById("extract-btn").addEventListener("click", () => {
     const file = document.getElementById("file-select").value;
     if (!file || isRunning || !ws) return;
     const instruction = `Extract all parameters from ${file} and show them as a table.`;
-    ws.send(JSON.stringify({ type: "chat", message: instruction, file }));
+    const provider = document.getElementById("provider-select").value || undefined;
+    const apiKey = document.getElementById("api-key-input").value || undefined;
+    ws.send(JSON.stringify({ type: "chat", message: instruction, file, provider, api_key: apiKey }));
     appendUserBubble(instruction);
     currentAgentBubble = null;
     setRunning(true);

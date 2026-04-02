@@ -7,13 +7,24 @@ To add a new provider:
      agent loop can reconstruct multi-turn history without touching .raw.
   3. Pass it to AgentLoop (agent/loop.py).
 
-Current providers: Claude (default), Claude Code CLI
+Current providers: Claude (API), Claude Code CLI, OpenAI-compatible (OpenRouter, OpenAI, Groq, etc.)
 """
 from __future__ import annotations
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 import anthropic
+import openai
+
+# Provider presets: name → (base_url, default_model)
+PROVIDER_PRESETS = {
+    "openrouter": ("https://openrouter.ai/api/v1", "anthropic/claude-sonnet-4-20250514"),
+    "openai":     ("https://api.openai.com/v1",     "gpt-4o"),
+    "groq":       ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+    "together":   ("https://api.together.xyz/v1",    "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+    "ollama":     ("http://localhost:11434/v1",      "llama3"),
+}
 
 logger = logging.getLogger(__name__)
 
@@ -332,3 +343,87 @@ Your response (JSON only):"""
                 text=parsed.get("content", output),
                 assistant_content=[],
             )
+
+
+class OpenAICompatibleClient:
+    """
+    OpenAI-compatible API client (works with OpenRouter, OpenAI, Groq,
+    Together, Ollama, LM Studio, and any provider exposing the
+    OpenAI Chat Completions API format).
+    """
+
+    def __init__(self, api_key: str, base_url: str, model: str) -> None:
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        self._model = model
+
+    def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system: str = "",
+    ) -> LLMResponse:
+        """
+        Send messages to an OpenAI-compatible endpoint.
+
+        tools: list of provider-agnostic tool dicts (agent/tools.py format).
+               Translated to OpenAI format here.
+        """
+        openai_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["input_schema"],
+                },
+            }
+            for t in tools
+        ]
+
+        # If system prompt is provided, prepend it as a system message.
+        # OpenAI-compatible APIs expect the system message in the messages list.
+        api_messages = messages
+        if system:
+            api_messages = [{"role": "system", "content": system}] + list(messages)
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": api_messages,
+        }
+        if openai_tools:
+            kwargs["tools"] = openai_tools
+
+        raw = self._client.chat.completions.create(**kwargs)
+
+        choice = raw.choices[0]
+        message = choice.message
+
+        tool_calls = []
+        text = message.content or ""
+
+        # Build assistant_content in a format compatible with multi-turn history.
+        # We mirror the Anthropic content block structure for consistency across providers.
+        assistant_content: list = []
+        if text:
+            assistant_content.append({"type": "text", "text": text})
+
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                tool_input = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=tool_input))
+                assistant_content.append({
+                    "type": "tool_use",
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "input": tool_input,
+                })
+
+        stop_reason = "tool_use" if tool_calls else "end_turn"
+
+        return LLMResponse(
+            stop_reason=stop_reason,
+            text=text,
+            tool_calls=tool_calls,
+            assistant_content=assistant_content,
+            raw=raw,
+        )
