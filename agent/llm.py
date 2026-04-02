@@ -69,7 +69,7 @@ class ClaudeLLMClient:
         import os
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model or self.DEFAULT_MODEL
-        self._max_tokens = max_tokens or int(os.getenv("MAX_TOKENS", "4096"))
+        self._max_tokens = max_tokens if max_tokens is not None else int(os.getenv("MAX_TOKENS", "4096"))
 
     def chat(
         self,
@@ -233,7 +233,9 @@ Your response (JSON only):"""
         # Use an allowlist to pass only safe environment variables to the subprocess.
         # This prevents leaking sensitive variables (API keys, database passwords, cloud
         # credentials) from the parent process into the claude CLI subprocess.
-        SAFE_ENV_VARS = {"PATH", "HOME", "TEMP", "USERPROFILE", "PATHEXT", "SYSTEMROOT", "COMSPEC"}
+        SAFE_ENV_VARS = {"PATH", "HOME", "USER", "SHELL", "LANG", "LC_CTYPE", "LC_ALL",
+                         "TMPDIR", "TEMP", "TERM", "USERPROFILE", "PATHEXT", "SYSTEMROOT",
+                         "COMSPEC", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "NODE_PATH"}
         subprocess_env = {k: v for k, v in _os.environ.items() if k in SAFE_ENV_VARS}
 
         _TIMEOUT = 300
