@@ -52,7 +52,7 @@ def set_parameter(doc: object, name: str, value: str) -> dict[str, Any]:
     try:
         params.ReferenceParameters.Item(name)
         raise ValueError(
-            f"Parameter '{name}' is a read-only reference parameter and cannot be written."
+            f"Parameter '{name}' is read-only"
         )
     except ValueError:
         raise   # re-raise the ValueError we just constructed
@@ -108,7 +108,10 @@ def save_as(doc: object, dest_path: str | Path, save_copy_as: bool = False) -> P
     """
     dest = Path(dest_path)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    doc.SaveAs(str(dest), save_copy_as)
+    try:
+        doc.SaveAs(str(dest), save_copy_as)
+    except Exception as e:
+        raise RuntimeError(f"Failed to save document to '{dest}': {e}") from e
     return dest
 
 
@@ -204,6 +207,10 @@ def add_component(
     tg = app.TransientGeometry
     matrix = tg.CreateMatrix()  # identity matrix
     if translation_mm:
+        if not isinstance(translation_mm, (list, tuple)) or len(translation_mm) != 3:
+            raise ValueError("translation_mm must be a list of 3 numbers [x, y, z]")
+        if not all(isinstance(v, (int, float)) for v in translation_mm):
+            raise ValueError("translation_mm values must be numbers")
         x, y, z = translation_mm
         pt = tg.CreatePoint(x / 10, y / 10, z / 10)  # mm → cm
         matrix.SetTranslation(pt)
