@@ -97,11 +97,12 @@ def test_websocket_chat_sends_events_in_order():
         StreamEvent(type="done", content="Described.", iterations=1),
     ]
 
-    with patch("web.AgentLoop") as MockLoop, \
+    mock_llm = MagicMock()
+
+    with patch("web.get_llm_client", return_value=mock_llm) as mock_get_client, \
+         patch("web.AgentLoop") as MockLoop, \
          patch("web.InventorConnection"), \
-         patch("web.ClaudeLLMClient"), \
-         patch("web.ToolExecutor"), \
-         patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+         patch("web.ToolExecutor"):
         instance = MockLoop.return_value
         instance.run_streaming.return_value = iter(mock_events)
 
@@ -112,35 +113,61 @@ def test_websocket_chat_sends_events_in_order():
             for _ in range(3):
                 msgs.append(ws.receive_json())
 
+    mock_get_client.assert_called_once_with(provider=None, api_key=None, model=None)
     types = [m["type"] for m in msgs]
     assert types == ["tool_start", "tool_result", "done"]
 
 
-def test_websocket_chat_uses_claude_code_cli_when_env_set():
-    """When CLAUDE_CODE=true, ClaudeCodeCLIClient must be used instead of ClaudeLLMClient."""
+def test_websocket_chat_passes_provider_from_message():
+    """When provider is specified in the chat message, it should be passed to get_llm_client."""
     from web import app, session_manager
     from agent.loop import StreamEvent
 
     session_manager.active_session = None
 
-    mock_events = [StreamEvent(type="done", content="OK via CLI.", iterations=1)]
+    mock_events = [StreamEvent(type="done", content="OK.", iterations=1)]
+    mock_llm = MagicMock()
 
-    with patch("web.AgentLoop") as MockLoop, \
+    with patch("web.get_llm_client", return_value=mock_llm) as mock_get_client, \
+         patch("web.AgentLoop") as MockLoop, \
          patch("web.InventorConnection"), \
-         patch("web.ClaudeCodeCLIClient") as MockCLI, \
-         patch("web.ClaudeLLMClient") as MockAPI, \
-         patch("web.ToolExecutor"), \
-         patch.dict("os.environ", {"CLAUDE_CODE": "true"}, clear=False):
+         patch("web.ToolExecutor"):
         instance = MockLoop.return_value
         instance.run_streaming.return_value = iter(mock_events)
 
         client = TestClient(app)
         with client.websocket_connect("/ws/chat") as ws:
-            ws.send_json({"type": "chat", "message": "test", "file": ""})
+            ws.send_json({
+                "type": "chat",
+                "message": "test",
+                "file": "",
+                "provider": "openrouter",
+                "api_key": "sk-or-test",
+                "model": "anthropic/claude-3.5-sonnet",
+            })
             ws.receive_json()  # consume the done event
 
-    MockCLI.assert_called_once()
-    MockAPI.assert_not_called()
+    mock_get_client.assert_called_once_with(
+        provider="openrouter",
+        api_key="sk-or-test",
+        model="anthropic/claude-3.5-sonnet",
+    )
+
+
+def test_websocket_chat_returns_error_on_config_failure():
+    """When get_llm_client raises an error, it should be sent back to the client."""
+    from web import app, session_manager
+
+    session_manager.active_session = None
+
+    with patch("web.get_llm_client", side_effect=ValueError("Missing API key")):
+        client = TestClient(app)
+        with client.websocket_connect("/ws/chat") as ws:
+            ws.send_json({"type": "chat", "message": "test", "file": ""})
+            msg = ws.receive_json()
+
+    assert msg["type"] == "error"
+    assert "Missing API key" in msg["message"]
 
 
 def test_websocket_rejects_second_connection_when_session_active():

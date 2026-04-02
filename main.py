@@ -10,7 +10,6 @@ Usage:
 """
 from __future__ import annotations
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -27,7 +26,7 @@ from inventor_api import InventorConnection
 from extract import extract_all
 from modify import set_parameters_batch, save_as, open_in_inventor
 from utils import ensure_dirs, write_json, write_csv, output_path
-from agent.llm import ClaudeLLMClient, ClaudeCodeCLIClient
+from config import get_llm_client
 from agent.loop import AgentLoop, ToolExecutor
 
 app = typer.Typer(help="Autodesk Inventor automation agent")
@@ -139,7 +138,9 @@ def modify(
 def ask(
     instruction: str = typer.Argument(..., help="Natural language instruction for the agent"),
     file: Optional[Path] = typer.Option(None, "--file", "-f", help="File to open (uses active doc if omitted)"),
-    api_key: Optional[str] = typer.Option(None, envvar="ANTHROPIC_API_KEY"),
+    provider: Optional[str] = typer.Option(None, "--provider", "-p", envvar="LLM_PROVIDER", help="LLM provider (anthropic, claude_code, openrouter, openai, groq, together, ollama, custom)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", envvar="LLM_MODEL", help="Override default model for the selected provider"),
+    api_key: Optional[str] = typer.Option(None, "--api-key", envvar="LLM_API_KEY", help="API key for the selected provider"),
 ):
     """
     Send a natural-language instruction to the AI agent.
@@ -152,21 +153,8 @@ def ask(
     ensure_dirs()
     conn, doc = get_connection(file)
 
-    use_claude_code = os.environ.get("CLAUDE_CODE", "false").lower() == "true"
-
-    if use_claude_code:
-        llm = ClaudeCodeCLIClient()
-        console.print("[dim]Using Claude Code CLI (CLAUDE_CODE=true)[/dim]")
-    else:
-        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            console.print(
-                "[red]Error:[/red] No LLM backend configured.\n"
-                "  Option A: Set CLAUDE_CODE=true in .env (uses Claude Code CLI, no API key needed)\n"
-                "  Option B: Set ANTHROPIC_API_KEY=sk-ant-... in .env"
-            )
-            raise typer.Exit(1)
-        llm = ClaudeLLMClient(api_key=key)
+    llm = get_llm_client(provider=provider, api_key=api_key, model=model)
+    console.print(f"[dim]Using LLM provider: {llm.__class__.__name__}[/dim]")
     executor = ToolExecutor(doc=doc, conn=conn)
     loop = AgentLoop(llm=llm, executor=executor)
 
