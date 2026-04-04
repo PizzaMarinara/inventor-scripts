@@ -145,7 +145,7 @@ class ToolExecutor:
             return {"opened": inp["file_path"]}
 
         elif name == "list_occurrences":
-            return extract_occurrences(self.doc)
+            return extract_occurrences(self.doc, getattr(self.conn, "app", None))
 
         elif name == "add_component":
             return add_component(

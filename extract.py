@@ -108,6 +108,7 @@ def _extract_occurrences_impl(
     doc: object,
     _prefix: str = "",
     _depth: int = 0,
+    app: object = None,
 ) -> list[dict[str, Any]]:
     """
     Extract all component occurrences from an .iam assembly document, recursively.
@@ -123,39 +124,84 @@ def _extract_occurrences_impl(
         suppressed       — bool
         translation_mm   — [x, y, z] offset from the parent assembly origin in mm
                            (Inventor stores internally in cm; multiplied by 10 here)
+
+    app: optional Inventor Application object used to open unloaded sub-documents
+         for recursion when occ.Definition.Document raises.
     """
     result: list[dict] = []
     try:
         for occ in doc.ComponentDefinition.Occurrences:
+            full_name = f"{_prefix}/{occ.Name}" if _prefix else occ.Name
+
+            # ── translation (per-field fallback) ──────────────────────────────
             try:
                 pt = occ.Transformation.Translation
                 translation_mm = [pt.X * 10, pt.Y * 10, pt.Z * 10]
-                full_name = f"{_prefix}/{occ.Name}" if _prefix else occ.Name
-                result.append({
-                    "occurrence_name": full_name,
-                    "component_name":  occ.Definition.DisplayName,
-                    "file_path":       occ.ReferencedDocumentDescriptor.FullDocumentName,
-                    "suppressed":      occ.Suppressed,
-                    "translation_mm":  translation_mm,
-                })
-                # Recurse into sub-assemblies (cap depth to avoid runaway traversal)
-                if _depth < 5:
-                    try:
-                        sub_doc = occ.Definition.Document
-                        sub_occs = _extract_occurrences_impl(sub_doc, full_name, _depth + 1)
-                        result.extend(sub_occs)
-                    except Exception as e:
-                        logger.debug("Could not recurse into sub-assembly: %s", e)
             except Exception as e:
-                logger.debug("Could not read occurrence: %s", e)
+                logger.warning("Could not read Transformation for %r: %s", full_name, e)
+                translation_mm = [0.0, 0.0, 0.0]
+
+            # ── component name (per-field fallback) ───────────────────────────
+            try:
+                component_name = occ.Definition.DisplayName
+            except Exception as e:
+                logger.warning("Could not read DisplayName for %r: %s", full_name, e)
+                component_name = ""
+
+            # ── file path (per-field fallback) ────────────────────────────────
+            try:
+                file_path = occ.ReferencedDocumentDescriptor.FullDocumentName
+            except Exception as e:
+                logger.warning("Could not read FullDocumentName for %r: %s", full_name, e)
+                file_path = ""
+
+            # ── suppression flag ──────────────────────────────────────────────
+            try:
+                suppressed = occ.Suppressed
+            except Exception:
+                suppressed = False
+
+            result.append({
+                "occurrence_name": full_name,
+                "component_name":  component_name,
+                "file_path":       file_path,
+                "suppressed":      suppressed,
+                "translation_mm":  translation_mm,
+            })
+
+            # ── recurse into sub-assemblies ────────────────────────────────────
+            if _depth < 5:
+                sub_doc = None
+                try:
+                    sub_doc = occ.Definition.Document
+                except Exception:
+                    # Sub-document not loaded in Inventor; try to open it via app
+                    if app is not None and file_path:
+                        try:
+                            sub_doc = app.Documents.Open(file_path)
+                        except Exception as e:
+                            logger.warning(
+                                "Could not open sub-assembly %r for recursion: %s",
+                                file_path, e,
+                            )
+                if sub_doc is not None:
+                    sub_occs = _extract_occurrences_impl(
+                        sub_doc, full_name, _depth + 1, app
+                    )
+                    result.extend(sub_occs)
+
     except Exception as e:
         logger.debug("Could not read occurrences: %s", e)
     return result
 
 
-def extract_occurrences(doc: object) -> list[dict[str, Any]]:
-    """Extract all component occurrences from an .iam assembly document."""
-    return _extract_occurrences_impl(doc, _prefix="", _depth=0)
+def extract_occurrences(doc: object, app: object = None) -> list[dict[str, Any]]:
+    """Extract all component occurrences from an .iam assembly document.
+
+    app: optional Inventor Application object; passed through to open unloaded
+         sub-assembly documents for recursive traversal.
+    """
+    return _extract_occurrences_impl(doc, _prefix="", _depth=0, app=app)
 
 
 def extract_all(doc: object) -> dict[str, Any]:

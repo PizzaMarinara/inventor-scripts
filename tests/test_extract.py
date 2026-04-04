@@ -258,6 +258,70 @@ def test_extract_all_occurrence_parameters_returns_empty_for_non_assembly():
     assert result == {}
 
 
+# ── extract_occurrences robustness tests (Bug 1 & Bug 2) ─────────────────────
+
+class _RaisesTranslation:
+    """Transformation stub whose Translation property always raises."""
+    @property
+    def Translation(self):
+        raise Exception("COM error: no transform")
+
+
+class _RaisesFullDocumentName:
+    """ReferencedDocumentDescriptor stub whose FullDocumentName always raises."""
+    @property
+    def FullDocumentName(self):
+        raise Exception("COM error: no descriptor")
+
+
+def test_extract_occurrences_returns_occurrence_when_transformation_raises():
+    """Bug 1a: a bad Transformation must not silently drop the whole occurrence."""
+    occ = make_mock_occurrence("part:1", "SomePart", "C:/part.ipt")
+    occ.Transformation = _RaisesTranslation()
+    doc = make_mock_assembly_doc(occurrences=[occ])
+
+    result = extract_occurrences(doc)
+
+    assert len(result) == 1, "occurrence must still be returned even if Transformation raises"
+    assert result[0]["occurrence_name"] == "part:1"
+    assert result[0]["translation_mm"] == [0.0, 0.0, 0.0]  # fallback
+
+
+def test_extract_occurrences_returns_occurrence_when_file_path_raises():
+    """Bug 1b: a bad ReferencedDocumentDescriptor must not drop the whole occurrence."""
+    occ = make_mock_occurrence("part:1", "SomePart", "C:/part.ipt")
+    occ.ReferencedDocumentDescriptor = _RaisesFullDocumentName()
+    doc = make_mock_assembly_doc(occurrences=[occ])
+
+    result = extract_occurrences(doc)
+
+    assert len(result) == 1, "occurrence must still be returned even if file_path raises"
+    assert result[0]["occurrence_name"] == "part:1"
+    assert result[0]["file_path"] == ""  # fallback
+
+
+def test_extract_occurrences_recurses_via_app_open_when_sub_doc_not_loaded():
+    """Bug 2: when Definition.Document raises, fall back to app.Documents.Open for recursion."""
+    child_occ = make_mock_occurrence("child:1", "ChildPart", "C:/child.ipt")
+    sub_asm_path = "C:/bracket.iam"
+    sub_asm_doc = make_mock_assembly_doc(occurrences=[child_occ])
+
+    # Top-level occurrence whose sub-document is not loaded in Inventor
+    top_occ = make_mock_occurrence("bracket:1", "Bracket", sub_asm_path)
+    top_occ.Definition = _UnloadedDef()
+
+    top_doc = make_mock_assembly_doc(occurrences=[top_occ])
+    app = MagicMock()
+    app.Documents.Open.return_value = sub_asm_doc
+
+    result = extract_occurrences(top_doc, app=app)
+
+    names = [r["occurrence_name"] for r in result]
+    assert "bracket:1" in names, "top-level occurrence must appear"
+    assert "bracket:1/child:1" in names, "sub-assembly child must appear via fallback open"
+    app.Documents.Open.assert_called_once_with(sub_asm_path)
+
+
 def test_extract_all_occurrence_parameters_recurses_into_sub_assembly(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     part_path = str(tmp_path / "input" / "bolt.ipt")
