@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+
+from dotenv import load_dotenv
+load_dotenv()
 import logging
 import threading
 from dataclasses import dataclass, field

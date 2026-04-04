@@ -79,7 +79,8 @@ def get_llm_client(
             env_var = PROVIDER_ENV_VARS.get(selected_provider, "LLM_API_KEY")
             raise ValueError(
                 f"No API key configured. Set {env_var} in your .env file.\n"
-                "  Get one at: https://console.anthropic.com/"
+                "  Get one at: https://console.anthropic.com/\n"
+                "  Tip: select 'Claude Code CLI' as the provider to use your local Claude login instead."
             )
         return ClaudeLLMClient(api_key=resolved_key, model=selected_model)
 
