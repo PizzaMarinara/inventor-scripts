@@ -407,6 +407,13 @@ Your response (JSON only):"""
 
         if parsed is None:
             # Truly no parseable content — treat as plain text response.
+            # Log the raw output at WARNING so we can diagnose future occurrences
+            # where the model embeds a tool call in an unrecognised format.
+            logger.warning(
+                "ClaudeCodeCLIClient: could not extract tool call or action from output "
+                "— falling back to plain text. Raw output:\n%s",
+                output,
+            )
             return LLMResponse(
                 stop_reason="end_turn",
                 text=output,
@@ -580,6 +587,25 @@ class OpenAICompatibleClient:
                 })
 
         stop_reason = "tool_use" if tool_calls else "end_turn"
+
+        # Diagnostic: warn when the provider signals tool_calls but message.tool_calls
+        # is empty — some OpenAI-compatible models/providers put the tool call in the
+        # text content instead of message.tool_calls. Without this warning the call
+        # silently becomes an end_turn and the raw tool syntax appears as chat text.
+        if choice.finish_reason == "tool_calls" and not tool_calls:
+            logger.warning(
+                "OpenAICompatibleClient: finish_reason='tool_calls' but message.tool_calls "
+                "is empty — model may have embedded the tool call in message.content. "
+                "Raw content:\n%s",
+                text,
+            )
+        elif stop_reason == "end_turn" and text:
+            logger.debug(
+                "OpenAICompatibleClient: returning end_turn with non-empty text "
+                "(finish_reason=%s). Content:\n%s",
+                choice.finish_reason,
+                text,
+            )
 
         return LLMResponse(
             stop_reason=stop_reason,

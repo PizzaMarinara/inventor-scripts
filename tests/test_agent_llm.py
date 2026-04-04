@@ -86,6 +86,48 @@ def test_claude_code_cli_parses_text_response():
     assert result.text == "Done."
 
 
+def test_claude_code_cli_tool_use_embedded_in_prose():
+    """Scanning path: JSON tool call preceded by reasoning text must still be recognised."""
+    import json
+    tool_json = json.dumps({
+        "action": "tool_use",
+        "tool": "describe_model",
+        "input": {},
+        "id": "t1",
+    })
+    fake_output = f"I need to describe the model first.\n\n{tool_json}"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=fake_output, returncode=0)
+        client = ClaudeCodeCLIClient()
+        result = client.chat(messages=[{"role": "user", "content": "describe"}], tools=[])
+    assert result.stop_reason == "tool_use", "tool call embedded in prose must be recognised"
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "describe_model"
+
+
+def test_claude_code_cli_tool_use_after_other_json_in_prose():
+    """Scanning path: a non-action JSON object before the tool call must not block it."""
+    import json
+    tool_json = json.dumps({
+        "action": "tool_use",
+        "tool": "set_parameter",
+        "input": {"name": "Width", "value": "150 mm"},
+        "id": "t1",
+    })
+    # Text contains an unrelated JSON object before the actual tool call
+    fake_output = (
+        f'The parameter currently reads {{"name": "Width", "value": "100 mm"}}. '
+        f"I will now update it.\n\n{tool_json}"
+    )
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=fake_output, returncode=0)
+        client = ClaudeCodeCLIClient()
+        result = client.chat(messages=[{"role": "user", "content": "set width"}], tools=[])
+    assert result.stop_reason == "tool_use"
+    assert result.tool_calls[0].name == "set_parameter"
+    assert result.tool_calls[0].input == {"name": "Width", "value": "150 mm"}
+
+
 def test_claude_code_cli_includes_tool_results_in_prompt():
     """Tool result content must appear verbatim in the prompt — not as a placeholder."""
     import json
