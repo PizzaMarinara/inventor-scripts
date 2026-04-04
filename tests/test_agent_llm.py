@@ -139,6 +139,72 @@ def test_claude_code_cli_error_shows_raw_stderr():
             client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
 
 
+# ── Bug I-7: XML tool-call format ──────────────────────────────────────────────
+
+XML_INVOKE_NO_PARAMS = (
+    "<function_calls>"
+    "<invoke name=\"describe_model\">"
+    "</invoke>"
+    "</function_calls>"
+)
+
+XML_INVOKE_WITH_PARAMS = (
+    "<function_calls>"
+    "<invoke name=\"set_parameter\">"
+    "<parameter name=\"name\">Width</parameter>"
+    "<parameter name=\"value\">150 mm</parameter>"
+    "</invoke>"
+    "</function_calls>"
+)
+
+
+def test_claude_code_cli_parses_xml_tool_call_no_params():
+    """Bug I-7: claude CLI native XML format with no parameters must yield a ToolCall."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=XML_INVOKE_NO_PARAMS, returncode=0)
+        client = ClaudeCodeCLIClient()
+        result = client.chat(messages=[{"role": "user", "content": "describe"}], tools=[])
+
+    assert result.stop_reason == "tool_use", "XML tool call must produce stop_reason='tool_use'"
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "describe_model"
+    assert result.tool_calls[0].input == {}
+
+
+def test_claude_code_cli_parses_xml_tool_call_with_params():
+    """Bug I-7: XML format with parameter elements must populate the input dict."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=XML_INVOKE_WITH_PARAMS, returncode=0)
+        client = ClaudeCodeCLIClient()
+        result = client.chat(messages=[{"role": "user", "content": "set it"}], tools=[])
+
+    assert result.stop_reason == "tool_use"
+    assert result.tool_calls[0].name == "set_parameter"
+    assert result.tool_calls[0].input == {"name": "Width", "value": "150 mm"}
+
+
+def test_claude_code_cli_xml_with_surrounding_text():
+    """Bug I-7: XML inside a longer text response (model adds preamble) still parsed."""
+    output = "I will now describe the model.\n" + XML_INVOKE_NO_PARAMS + "\n"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=output, returncode=0)
+        client = ClaudeCodeCLIClient()
+        result = client.chat(messages=[{"role": "user", "content": "describe"}], tools=[])
+
+    assert result.stop_reason == "tool_use"
+    assert result.tool_calls[0].name == "describe_model"
+
+
+# ── Bug C-1: unexpected subprocess exception ───────────────────────────────────
+
+def test_claude_code_cli_unexpected_subprocess_error_raises_runtime_error():
+    """Bug C-1: OSError from subprocess must raise RuntimeError, not AttributeError from proc=None."""
+    with patch("subprocess.run", side_effect=OSError("permission denied")):
+        client = ClaudeCodeCLIClient()
+        with pytest.raises(RuntimeError, match="permission denied"):
+            client.chat(messages=[{"role": "user", "content": "hi"}], tools=[])
+
+
 # ── OpenAICompatibleClient tests ──────────────────────────────────────────────
 
 

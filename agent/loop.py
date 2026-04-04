@@ -118,7 +118,7 @@ class ToolExecutor:
         inp = tool_call.input
 
         if name == "describe_model":
-            return describe_model(self.doc)
+            return describe_model(self.doc, app=getattr(self.conn, "app", None))
 
         elif name == "get_parameters":
             return extract_parameters(self.doc)
@@ -136,8 +136,13 @@ class ToolExecutor:
             return extract_properties(self.doc)
 
         elif name == "save_as":
-            dest = Path.cwd() / "output" / inp["filename"]
-            saved_path = save_as(self.doc, dest)
+            output_dir = (Path.cwd() / "output").resolve()
+            dest = (output_dir / inp["filename"]).resolve()
+            if not dest.is_relative_to(output_dir):
+                return {"error": "Invalid filename: path traversal not allowed"}
+            # save_copy_as=True: save a non-destructive copy; the live doc COM
+            # object stays mapped to the original path (matches tool description).
+            saved_path = save_as(self.doc, dest, True)
             return {"saved_to": str(saved_path)}
 
         elif name == "open_in_inventor":
@@ -191,11 +196,14 @@ class ToolExecutor:
             return set_parameter(sub_doc, inp["param_name"], inp["value"])
 
         elif name == "save_occurrence_document":
+            output_dir = (Path.cwd() / "output").resolve()
+            dest = (output_dir / inp["filename"]).resolve()
+            if not dest.is_relative_to(output_dir):
+                return {"error": "Invalid filename: path traversal not allowed"}
             occ, _ = _find_occurrence(
                 self.doc, inp["occurrence_name"], self.conn.app
             )
             sub_doc = _get_or_open_sub_doc(occ, self.conn.app)
-            dest = Path.cwd() / "output" / inp["filename"]
             saved_path = save_as(sub_doc, dest)
             return {"saved_to": str(saved_path)}
 

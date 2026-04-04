@@ -88,3 +88,43 @@ def test_describe_model_occurrences_show_suppressed_state():
     doc = make_mock_assembly_doc(occurrences=[occ])
     result = describe_model(doc)
     assert "suppressed=True" in result
+
+
+# ── Bug S-2: describe_model must pass app through to extract_occurrences ───────
+
+from unittest.mock import MagicMock, patch
+
+
+def test_describe_model_passes_app_to_extract_occurrences():
+    """Bug S-2: describe_model must forward app to extract_occurrences so that
+    unloaded sub-assembly documents can be opened for recursive traversal."""
+    from tests.conftest import make_mock_assembly_doc, make_mock_occurrence
+    doc = make_mock_assembly_doc(occurrences=[])
+    app = MagicMock()
+
+    with patch("agent.describe.extract_all") as mock_extract_all:
+        mock_extract_all.return_value = {
+            "display_name": "test.iam",
+            "source_file": "C:/test.iam",
+            "parameters": {},
+            "bom": [],
+            "occurrences": [],
+            "properties": {},
+        }
+        describe_model(doc, app=app)
+
+    mock_extract_all.assert_called_once_with(doc, app=app)
+
+
+def test_describe_model_app_forwarded_to_extract_occurrences_real_call():
+    """Bug S-2: extract_all must pass app down to extract_occurrences."""
+    from tests.conftest import make_mock_assembly_doc
+    doc = make_mock_assembly_doc(occurrences=[])
+    app = MagicMock()
+
+    with patch("extract.extract_occurrences") as mock_extract_occ:
+        mock_extract_occ.return_value = []
+        from extract import extract_all
+        extract_all(doc, app=app)
+
+    mock_extract_occ.assert_called_once_with(doc, app)

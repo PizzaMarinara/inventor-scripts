@@ -304,6 +304,7 @@ def test_websocket_run_python_script(tmp_path, monkeypatch):
     mock_session.ws = AsyncMock()
     mock_session.active_file = None
     mock_session.conn = None
+    mock_session.is_running = False  # must be falsy to pass the is_running guard
     session_manager.active_session = mock_session
 
     with patch("script_generator.SCRIPTS_DIR", scripts_dir):
@@ -377,3 +378,25 @@ def test_websocket_list_scripts(tmp_path, monkeypatch):
     msg = calls[0][0][0]
     assert msg["type"] == "script_list"
     assert len(msg["scripts"]) == 1
+
+
+# ── Bug C-2: _handle_run_script missing is_running guard ──────────────────────
+
+def test_run_script_rejected_when_agent_already_running():
+    """Bug C-2: _handle_run_script must reject with error when is_running=True."""
+    import asyncio
+    from web import Session, _handle_run_script
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.ws = AsyncMock()
+    mock_session.is_running = True  # agent is already in flight
+
+    asyncio.get_event_loop().run_until_complete(
+        _handle_run_script(mock_session, {"filename": "test.py"})
+    )
+
+    calls = mock_session.ws.send_json.call_args_list
+    assert len(calls) == 1, "Should send exactly one error message"
+    msg = calls[0][0][0]
+    assert msg["type"] == "error"
+    assert "running" in msg["message"].lower()

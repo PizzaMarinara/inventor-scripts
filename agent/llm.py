@@ -146,6 +146,52 @@ class ClaudeLLMClient:
         )
 
 
+def _parse_xml_tool_call(text: str) -> dict | None:
+    """
+    Parse Claude's native antml XML tool-call format into the same dict shape
+    the JSON prompt-engineering path uses:
+        {"action": "tool_use", "tool": "<name>", "input": {...}, "id": "tc_xml_1"}
+
+    Handles both bare XML and XML embedded inside surrounding prose.
+    Returns None if no recognisable <function_calls> block is found.
+    """
+    import xml.etree.ElementTree as ET
+    import re
+
+    # Locate the <function_calls> block (may be preceded by prose)
+    match = re.search(r"<function_calls>.*?</function_calls>", text, re.DOTALL)
+    if not match:
+        return None
+
+    try:
+        root = ET.fromstring(match.group(0))
+    except ET.ParseError:
+        return None
+
+    # Take the first <invoke> element
+    invoke = root.find("invoke")
+    if invoke is None:
+        return None
+
+    tool_name = invoke.get("name", "")
+    if not tool_name:
+        return None
+
+    # Collect <parameter name="…">value</parameter> children
+    tool_input: dict = {}
+    for param in invoke.findall("parameter"):
+        param_name = param.get("name", "")
+        if param_name:
+            tool_input[param_name] = param.text or ""
+
+    return {
+        "action": "tool_use",
+        "tool": tool_name,
+        "input": tool_input,
+        "id": "tc_xml_1",
+    }
+
+
 class ClaudeCodeCLIClient:
     """
     LLM client that delegates to the Claude Code CLI (`claude -p`).
@@ -291,6 +337,11 @@ Your response (JSON only):"""
                         f"Claude Code CLI timed out after {_MAX_RETRIES + 1} attempts "
                         f"({_TIMEOUT}s each)."
                     )
+            except Exception as exc:
+                # Bug C-1: any other OS-level error (PermissionError, OSError, …)
+                # must surface immediately as RuntimeError so the caller gets the
+                # real message instead of an AttributeError from proc=None.
+                raise RuntimeError(f"Claude Code CLI subprocess error: {exc}") from exc
 
         logger.info("Claude Code CLI response: exit_code=%d", proc.returncode)
 
@@ -344,7 +395,18 @@ Your response (JSON only):"""
             parsed = tool_use_candidate if tool_use_candidate is not None else text_candidate
 
         if parsed is None:
-            # Truly no parseable JSON — treat as plain text response
+            # Bug I-7: claude CLI sometimes responds in its native antml XML
+            # tool-call format instead of the prompt-engineered JSON format:
+            #   <function_calls>
+            #     <invoke name="tool_name">
+            #       <parameter name="param">value</parameter>
+            #     </invoke>
+            #   </function_calls>
+            # Try to extract a tool call from that XML before giving up.
+            parsed = _parse_xml_tool_call(output)
+
+        if parsed is None:
+            # Truly no parseable content — treat as plain text response.
             return LLMResponse(
                 stop_reason="end_turn",
                 text=output,

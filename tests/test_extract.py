@@ -339,3 +339,35 @@ def test_extract_all_occurrence_parameters_recurses_into_sub_assembly(tmp_path, 
     assert sub_asm_path in result
     assert part_path in result
     assert "bracket:1/bolt:1" in result[part_path]["occurrences"]
+
+
+# ── Bug I-1: UnboundLocalError when occ.Name raises ──────────────────────────
+
+class _RaisesName:
+    """Occurrence stub whose Name property always raises."""
+    @property
+    def Name(self):
+        raise Exception("COM error: name unavailable")
+
+
+def test_extract_all_occurrence_parameters_continues_after_occ_name_raises(tmp_path, monkeypatch):
+    """Bug I-1: if occ.Name raises, the UnboundLocalError in the except handler aborts
+    the entire for-loop via the outer except, so good occurrences AFTER the bad one are
+    silently dropped. After the fix, the loop must continue and process subsequent occurrences."""
+    monkeypatch.chdir(tmp_path)
+
+    # Bad occurrence first; good occurrence second
+    bad_occ = MagicMock()
+    type(bad_occ).Name = property(lambda self: (_ for _ in ()).throw(Exception("COM error")))
+
+    good_file = str(tmp_path / "input" / "good.ipt")
+    good_occ = make_occ_with_sub_doc("good:1", good_file, make_mock_doc())
+
+    doc = make_mock_assembly_doc(occurrences=[bad_occ, good_occ])
+
+    result = extract_all_occurrence_parameters(doc, MagicMock())
+
+    # The good occurrence must still be returned despite the bad one coming first
+    assert good_file in result, (
+        "Good occurrences after a bad occ.Name must not be silently dropped"
+    )

@@ -204,15 +204,19 @@ def extract_occurrences(doc: object, app: object = None) -> list[dict[str, Any]]
     return _extract_occurrences_impl(doc, _prefix="", _depth=0, app=app)
 
 
-def extract_all(doc: object) -> dict[str, Any]:
-    """Run all extractors and return a single consolidated dict."""
+def extract_all(doc: object, app: object = None) -> dict[str, Any]:
+    """Run all extractors and return a single consolidated dict.
+
+    app: optional Inventor Application object forwarded to extract_occurrences
+         so that unloaded sub-assembly documents can be opened for recursion.
+    """
     return {
         "source_file": getattr(doc, "FullFileName", "unknown"),
         "display_name": getattr(doc, "DisplayName", "unknown"),
         "properties": extract_properties(doc),
         "parameters": extract_parameters(doc),
         "bom": extract_bom(doc),
-        "occurrences": extract_occurrences(doc),
+        "occurrences": extract_occurrences(doc, app),
     }
 
 
@@ -226,6 +230,7 @@ def _collect_all_occurrence_params(
 ) -> None:
     try:
         for occ in doc.ComponentDefinition.Occurrences:
+            full_name = "(unknown)"  # Bug I-1: init before try so except handler can reference it
             try:
                 full_name = f"{_prefix}/{occ.Name}" if _prefix else occ.Name
                 file_path = occ.ReferencedDocumentDescriptor.FullDocumentName

@@ -507,3 +507,60 @@ def test_system_prompt_contains_script_generation_guidance():
     assert "generate_script" in SYSTEM_PROMPT
     assert "must" in SYSTEM_PROMPT.lower()  # Must generate when user asks
     assert "ask" in SYSTEM_PROMPT.lower()   # Ask when unsure
+
+
+# ── Bug I-3: Path traversal in save_as / save_occurrence_document ─────────────
+
+def test_tool_executor_save_as_rejects_path_traversal(tmp_path, monkeypatch):
+    """Bug I-3: save_as with path traversal must return error, not write outside output/."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "output").mkdir()
+
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="save_as", input={"filename": "../../etc/passwd"})
+    result = executor.execute(tc)
+
+    assert "error" in result
+    assert not (tmp_path.parent.parent / "etc" / "passwd").exists()
+
+
+def test_tool_executor_save_occurrence_document_rejects_path_traversal(tmp_path, monkeypatch):
+    """Bug I-3: save_occurrence_document with path traversal must return error."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "output").mkdir()
+
+    mock_conn = MagicMock()
+    # _find_occurrence and _get_or_open_sub_doc are called inside; mock them out
+    sub_doc = make_mock_doc()
+    with patch("agent.loop._find_occurrence") as mock_find, \
+         patch("agent.loop._get_or_open_sub_doc", return_value=sub_doc):
+        mock_find.return_value = (MagicMock(), MagicMock())
+        executor = ToolExecutor(doc=make_mock_doc(), conn=mock_conn)
+        tc = ToolCall(
+            id="t1",
+            name="save_occurrence_document",
+            input={"occurrence_name": "part:1", "filename": "../../evil.ipt"},
+        )
+        result = executor.execute(tc)
+
+    assert "error" in result
+
+
+# ── Bug C-3: save_as must use save_copy_as=True ───────────────────────────────
+
+def test_tool_executor_save_as_uses_save_copy_as_true(tmp_path, monkeypatch):
+    """Bug C-3: save_as tool handler must pass save_copy_as=True so the live doc
+    object is not remapped to the output path."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "output").mkdir()
+
+    with patch("agent.loop.save_as") as mock_save:
+        mock_save.return_value = tmp_path / "output" / "out.ipt"
+        executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+        tc = ToolCall(id="t1", name="save_as", input={"filename": "out.ipt"})
+        executor.execute(tc)
+
+    _doc_arg, _path_arg, *rest = mock_save.call_args.args
+    kwargs = mock_save.call_args.kwargs
+    save_copy_as = rest[0] if rest else kwargs.get("save_copy_as", False)
+    assert save_copy_as is True, "save_as tool handler must use save_copy_as=True"

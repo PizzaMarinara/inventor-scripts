@@ -148,6 +148,15 @@ async def download_script(filename: str):
 
 async def _handle_run_script(session: Session, data: dict) -> None:
     """Execute a saved script and stream results back over WebSocket."""
+    # Bug C-2: guard against concurrent COM access — if the agent is already
+    # running in the thread pool, reject the script run immediately.
+    if session.is_running:
+        await session.ws.send_json({
+            "type": "error",
+            "message": "Agent is already running. Wait for it to finish before running a script.",
+        })
+        return
+
     from script_generator import (
         get_script_content,
         run_python_script,
@@ -404,7 +413,12 @@ async def _handle_chat(session: Session, data: dict) -> None:
     model: str | None = data.get("model")
     api_key: str | None = data.get("api_key")
 
-    logger.info("_handle_chat: provider=%r api_key=%r model=%r", provider, api_key, model)
+    logger.info(
+        "_handle_chat: provider=%r api_key=%s model=%r",
+        provider,
+        "<set>" if api_key else None,
+        model,
+    )
     session.is_running = True
     session.cancel_event.clear()
 

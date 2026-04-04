@@ -9,7 +9,7 @@ from __future__ import annotations
 from extract import extract_all
 
 
-def describe_model(doc: object) -> str:
+def describe_model(doc: object, app: object = None) -> str:
     """
     Return a human-and-LLM-readable summary of the open document.
 
@@ -20,7 +20,7 @@ def describe_model(doc: object) -> str:
     - Occurrences list (for assemblies)
     - Key properties
     """
-    data = extract_all(doc)
+    data = extract_all(doc, app=app)
     lines: list[str] = []
 
     lines.append(f"=== Inventor Document: {data['display_name']} ===")
