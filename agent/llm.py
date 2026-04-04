@@ -372,6 +372,60 @@ Your response (JSON only):"""
             )
 
 
+def _to_openai_messages(messages: list[dict]) -> list[dict]:
+    """
+    Translate Anthropic-format message history to OpenAI format.
+
+    AgentLoop stores history in Anthropic format (assistant content blocks +
+    user tool_result blocks). OpenAI-compatible APIs require a different shape:
+      - assistant tool calls → {"role": "assistant", "tool_calls": [...]}
+      - tool results         → {"role": "tool", "tool_call_id": ..., "content": ...}
+    """
+    result: list[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+
+        if role == "assistant" and isinstance(content, list):
+            text_parts: list[str] = []
+            tool_calls: list[dict] = []
+            for block in content:
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    tool_calls.append({
+                        "id": block["id"],
+                        "type": "function",
+                        "function": {
+                            "name": block["name"],
+                            "arguments": json.dumps(block.get("input", {})),
+                        },
+                    })
+            oai_msg: dict = {"role": "assistant", "content": "".join(text_parts) or None}
+            if tool_calls:
+                oai_msg["tool_calls"] = tool_calls
+            result.append(oai_msg)
+
+        elif (
+            role == "user"
+            and isinstance(content, list)
+            and content
+            and content[0].get("type") == "tool_result"
+        ):
+            # Each tool_result block becomes its own "tool" role message.
+            for block in content:
+                result.append({
+                    "role": "tool",
+                    "tool_call_id": block["tool_use_id"],
+                    "content": block.get("content", ""),
+                })
+
+        else:
+            result.append(msg)
+
+    return result
+
+
 class OpenAICompatibleClient:
     """
     OpenAI-compatible API client (works with OpenRouter, OpenAI, Groq,
@@ -409,11 +463,15 @@ class OpenAICompatibleClient:
             for t in tools
         ]
 
+        # Translate Anthropic-format history (tool_use blocks, tool_result blocks)
+        # to OpenAI format (tool_calls on assistant, "tool" role messages).
+        translated = _to_openai_messages(messages)
+
         # If system prompt is provided, prepend it as a system message.
         # OpenAI-compatible APIs expect the system message in the messages list.
-        api_messages = messages
+        api_messages = translated
         if system:
-            api_messages = [{"role": "system", "content": system}] + list(messages)
+            api_messages = [{"role": "system", "content": system}] + translated
 
         kwargs: dict[str, Any] = {
             "model": self._model,
