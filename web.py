@@ -404,6 +404,7 @@ async def _handle_chat(session: Session, data: dict) -> None:
     model: str | None = data.get("model")
     api_key: str | None = data.get("api_key")
 
+    logger.info("_handle_chat: provider=%r api_key=%r model=%r", provider, api_key, model)
     session.is_running = True
     session.cancel_event.clear()
 

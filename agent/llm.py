@@ -111,7 +111,17 @@ class ClaudeLLMClient:
         if system:
             kwargs["system"] = system
 
+        logger.info(
+            "Anthropic request: model=%s messages=%d tools=%d max_tokens=%d",
+            self._model, len(messages), len(tools), self._max_tokens,
+        )
         raw = self._client.messages.create(**kwargs)
+        logger.info(
+            "Anthropic response: stop_reason=%s input_tokens=%d output_tokens=%d",
+            raw.stop_reason,
+            raw.usage.input_tokens,
+            raw.usage.output_tokens,
+        )
 
         tool_calls = []
         text = ""
@@ -244,6 +254,10 @@ Your response (JSON only):"""
         # credentials) from the parent process into the claude CLI subprocess.
         subprocess_env = {k: v for k, v in _os.environ.items() if k in SAFE_ENV_VARS}
 
+        logger.info(
+            "Claude Code CLI request: messages=%d tools=%d",
+            len(messages), len(tools),
+        )
         _TIMEOUT = 300
         _MAX_RETRIES = 2
         proc = None
@@ -277,6 +291,8 @@ Your response (JSON only):"""
                         f"Claude Code CLI timed out after {_MAX_RETRIES + 1} attempts "
                         f"({_TIMEOUT}s each)."
                     )
+
+        logger.info("Claude Code CLI response: exit_code=%d", proc.returncode)
 
         # Surface stderr / non-zero exit as a clear RuntimeError so callers
         # (web UI, CLI) can display the real message from the Claude Code CLI.
@@ -407,7 +423,18 @@ class OpenAICompatibleClient:
         if openai_tools:
             kwargs["tools"] = openai_tools
 
+        logger.info(
+            "OpenAI-compatible request: model=%s messages=%d tools=%d max_tokens=%d",
+            self._model, len(api_messages), len(tools), self._max_tokens,
+        )
         raw = self._client.chat.completions.create(**kwargs)
+        usage = raw.usage
+        logger.info(
+            "OpenAI-compatible response: finish_reason=%s prompt_tokens=%s completion_tokens=%s",
+            raw.choices[0].finish_reason,
+            usage.prompt_tokens if usage else "?",
+            usage.completion_tokens if usage else "?",
+        )
 
         choice = raw.choices[0]
         message = choice.message

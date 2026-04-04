@@ -6,9 +6,12 @@ Usage:
     llm = get_llm_client()
 """
 from __future__ import annotations
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from agent.llm import (
     LLMClient,
@@ -67,6 +70,8 @@ def get_llm_client(
     # CLI/Web overrides take priority over env var
     selected_provider = provider or settings.provider
     selected_model = model or settings.model
+
+    logger.info("get_llm_client: provider=%r selected_provider=%r", provider, selected_provider)
 
     # Claude Code CLI — no API key needed
     if selected_provider == "claude_code":

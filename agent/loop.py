@@ -277,10 +277,18 @@ class AgentLoop:
 
         while iteration < self._max_iterations:
             iteration += 1
+            logger.info(
+                "Iteration %d/%d — sending %d message(s) to LLM",
+                iteration, self._max_iterations, len(messages),
+            )
             response: LLMResponse = self._llm.chat(
                 messages=messages,
                 tools=TOOLS,
                 system=SYSTEM_PROMPT,
+            )
+            logger.info(
+                "Iteration %d — LLM responded: stop_reason=%s",
+                iteration, response.stop_reason,
             )
 
             if response.stop_reason == "end_turn":
