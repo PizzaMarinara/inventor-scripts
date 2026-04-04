@@ -317,6 +317,7 @@ class AgentLoop:
 
                 tool_results_block = []
                 for tc in response.tool_calls:
+                    logger.info("Tool call: %s %s", tc.name, tc.input)
                     yield StreamEvent(
                         type="tool_start",
                         tool_name=tc.name,
@@ -325,7 +326,7 @@ class AgentLoop:
                     )
                     try:
                         result = self._executor.execute(tc)
-                        logger.debug("Tool %s succeeded: %s", tc.name, result)
+                        logger.info("Tool result: %s → %s", tc.name, result)
                     except Exception as e:
                         result = {"error": str(e)}
                         logger.warning("Tool %s raised: %s", tc.name, e)
