@@ -183,14 +183,22 @@ def serve(
     open_browser: bool = typer.Option(True, "--open/--no-open", help="Open browser on start"),
 ):
     """Launch the web UI on localhost."""
+    import copy
     import uvicorn
     import webbrowser
     import threading
+    from uvicorn.config import LOGGING_CONFIG
+
+    # Extend uvicorn's logging config so the root logger (and therefore all
+    # app loggers — agent.llm, agent.loop, config, web) emit INFO messages
+    # using the same "default" handler/formatter as uvicorn itself.
+    log_config = copy.deepcopy(LOGGING_CONFIG)
+    log_config["root"] = {"level": "INFO", "handlers": ["default"]}
 
     if open_browser:
         threading.Timer(0.8, lambda: webbrowser.open(f"http://{host}:{port}")).start()
 
-    uvicorn.run("web:app", host=host, port=port, reload=False)
+    uvicorn.run("web:app", host=host, port=port, reload=False, log_config=log_config)
 
 
 if __name__ == "__main__":
