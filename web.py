@@ -345,8 +345,10 @@ async def _stream_events(
                 session.loop = AgentLoop(llm=llm, executor=executor)
                 session.active_file = normalised
             else:
-                # Same file: keep history but hand the loop fresh COM object refs
-                # so it uses the connection initialised on this thread.
+                # Same file: refresh COM refs but preserve describe cache so
+                # the agent does not re-call describe_model across user messages.
+                if session.loop._executor._describe_cache is not None:
+                    executor._describe_cache = session.loop._executor._describe_cache
                 session.loop._executor = executor
 
             return list(session.loop.run_streaming(instruction))

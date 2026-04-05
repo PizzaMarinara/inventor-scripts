@@ -112,13 +112,18 @@ class ToolExecutor:
     def __init__(self, doc: object, conn: object) -> None:
         self.doc = doc
         self.conn = conn
+        self._describe_cache: str | None = None
 
     def execute(self, tool_call: ToolCall) -> Any:
         name = tool_call.name
         inp = tool_call.input
 
         if name == "describe_model":
-            return describe_model(self.doc, app=getattr(self.conn, "app", None))
+            if self._describe_cache is not None:
+                return self._describe_cache + "\n[cached — document unchanged since last describe_model call]"
+            result = describe_model(self.doc, app=getattr(self.conn, "app", None))
+            self._describe_cache = result
+            return result
 
         elif name == "get_parameters":
             return extract_parameters(self.doc)

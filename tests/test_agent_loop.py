@@ -564,3 +564,38 @@ def test_tool_executor_save_as_uses_save_copy_as_true(tmp_path, monkeypatch):
     kwargs = mock_save.call_args.kwargs
     save_copy_as = rest[0] if rest else kwargs.get("save_copy_as", False)
     assert save_copy_as is True, "save_as tool handler must use save_copy_as=True"
+
+
+# ── describe_model caching ────────────────────────────────────────────────────
+
+def test_describe_model_cached_on_second_call():
+    """Second describe_model call must return cached result without calling describe_model again."""
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="describe_model", input={})
+
+    with patch("agent.loop.describe_model") as mock_describe:
+        mock_describe.return_value = "File: TestPart.ipt\nParameters: Width=100mm"
+        result1 = executor.execute(tc)
+        result2 = executor.execute(tc)
+
+    assert mock_describe.call_count == 1, "describe_model should only be called once"
+    assert "[cached" in result2
+    assert "TestPart.ipt" in result2
+
+
+def test_describe_model_cache_cleared_on_new_executor():
+    """A fresh ToolExecutor must not carry over any cached description."""
+    executor1 = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="describe_model", input={})
+
+    with patch("agent.loop.describe_model") as mock_describe:
+        mock_describe.return_value = "File: Part1.ipt"
+        executor1.execute(tc)
+
+    executor2 = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    with patch("agent.loop.describe_model") as mock_describe2:
+        mock_describe2.return_value = "File: Part2.ipt"
+        result = executor2.execute(tc)
+
+    assert mock_describe2.call_count == 1, "New executor must call describe_model fresh"
+    assert "[cached" not in result
