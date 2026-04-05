@@ -300,6 +300,14 @@ function renderFileTree(files) {
         }
     });
 
+    if (files.length === 0) {
+        const msg = document.createElement("div");
+        msg.style.cssText = "padding: 0.5rem 0.75rem; font-size: 0.8rem; color: #9ca3af;";
+        msg.textContent = "No input files found. Add .ipt/.iam files to the input/ folder.";
+        tree.appendChild(msg);
+        return;
+    }
+
     // Root files
     if (rootFiles.length > 0) {
         const label = document.createElement("div");
@@ -386,7 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
     refreshOutputsList();
     loadScriptsList();
     document.getElementById("file-change-btn").addEventListener("click", () => {
-        if (!filePickerOpen) renderFileTree(allFiles);
+        renderFileTree(allFiles);
         togglePicker();
     });
     document.getElementById("file-refresh-btn").addEventListener("click", loadFileList);

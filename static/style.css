@@ -65,12 +65,12 @@ html, body {
 #file-banner {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.6rem;
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   border-radius: 6px;
-  padding: 0.45rem 0.6rem;
-  margin-bottom: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
   min-width: 0;
 }
 #file-banner.banner-none {
@@ -98,27 +98,30 @@ html, body {
 .file-change-btn {
   flex-shrink: 0;
   background: transparent;
-  border: 1px solid #bbf7d0;
+  border: 1px solid #86efac;
   border-radius: 4px;
   font-size: 0.75rem;
   color: #15803d;
-  padding: 2px 6px;
+  padding: 3px 8px;
   cursor: pointer;
+  white-space: nowrap;
 }
+.file-change-btn:hover { background: #dcfce7; }
 #file-banner.banner-none .file-change-btn {
-  border-color: #e5e7eb;
+  border-color: #d1d5db;
   color: #6b7280;
 }
+#file-banner.banner-none .file-change-btn:hover { background: #f3f4f6; }
 
 /* ── File picker ─────────────────────────────────────────────────────────────── */
 #file-picker {
   background: #f9fafb;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  margin-bottom: 0.4rem;
-  overflow: hidden;
+  margin-bottom: 0.5rem;
   max-height: 220px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .file-tree-group-label {
   font-size: 0.7rem;
