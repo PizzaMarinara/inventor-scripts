@@ -599,3 +599,63 @@ def test_describe_model_cache_cleared_on_new_executor():
 
     assert mock_describe2.call_count == 1, "New executor must call describe_model fresh"
     assert "[cached" not in result
+
+
+# ── run_script tool dispatch ──────────────────────────────────────────────────
+
+def test_executor_dispatches_run_script_python(tmp_path, monkeypatch):
+    """run_script for a python file should call run_python_script and return success dict."""
+    monkeypatch.chdir(tmp_path)
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "test.py").write_text("print('hello')")
+
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="run_script", input={"filename": "test.py"})
+
+    with patch("agent.loop.get_script_content", return_value=("print('hello')", "python")), \
+         patch("agent.loop.run_python_script", return_value={"exit_code": 0, "stdout": "hello\n", "stderr": ""}) as mock_run, \
+         patch("agent.loop.SCRIPTS_DIR", scripts_dir):
+        result = executor.execute(tc)
+
+    assert result["success"] is True
+    assert "hello" in result["output"]
+    mock_run.assert_called_once()
+
+
+def test_executor_dispatches_run_script_ilogic(tmp_path, monkeypatch):
+    """run_script for an ilogic file should call run_ilogic_rule and return success dict."""
+    monkeypatch.chdir(tmp_path)
+    scripts_dir = tmp_path / "scripts"
+    scripts_dir.mkdir()
+
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="run_script", input={"filename": "rule.ilogic"})
+
+    with patch("agent.loop.get_script_content", return_value=("Parameter('X') = 10", "ilogic")), \
+         patch("agent.loop.run_ilogic_rule", return_value={"success": True, "output": "done", "error": ""}) as mock_run, \
+         patch("agent.loop.SCRIPTS_DIR", scripts_dir):
+        result = executor.execute(tc)
+
+    assert result["success"] is True
+    assert result["output"] == "done"
+    mock_run.assert_called_once()
+
+
+def test_executor_run_script_returns_error_for_missing_file(tmp_path, monkeypatch):
+    """run_script with a nonexistent filename should return an error dict."""
+    monkeypatch.chdir(tmp_path)
+    executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
+    tc = ToolCall(id="t1", name="run_script", input={"filename": "ghost.py"})
+
+    with patch("agent.loop.get_script_content", side_effect=FileNotFoundError()):
+        result = executor.execute(tc)
+
+    assert "error" in result
+    assert "ghost.py" in result["error"]
+
+
+def test_system_prompt_contains_run_script_guidance():
+    from agent.loop import SYSTEM_PROMPT
+    assert "run_script" in SYSTEM_PROMPT
+    assert "confirmed" in SYSTEM_PROMPT.lower() or "confirm" in SYSTEM_PROMPT.lower()

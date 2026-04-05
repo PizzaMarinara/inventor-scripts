@@ -46,10 +46,11 @@ NEW_TOOL_NAMES = {
     "set_occurrence_parameter",
     "save_occurrence_document",
     "generate_script",
+    "run_script",
 }
 
 # Tools from NEW_TOOL_NAMES that are assembly-only (excludes general-purpose tools)
-ASSEMBLY_ONLY_NEW_TOOLS = NEW_TOOL_NAMES - {"generate_script"}
+ASSEMBLY_ONLY_NEW_TOOLS = NEW_TOOL_NAMES - {"generate_script", "run_script"}
 
 
 def test_all_new_tools_present():
@@ -129,3 +130,15 @@ def test_generate_script_mentions_user_override_in_description():
     desc = tool["description"].lower()
     assert "must" in desc  # Must generate when user asks
     assert "ask" in desc   # Ask when unsure
+
+
+def test_run_script_has_filename_required():
+    tool = get_tool_by_name("run_script")
+    assert "filename" in tool["input_schema"]["required"]
+    assert "file_path" not in tool["input_schema"].get("required", [])
+
+
+def test_run_script_not_assembly_only():
+    """run_script is not assembly-specific — its description must not say assembly-only."""
+    tool = get_tool_by_name("run_script")
+    assert "assembly only" not in tool["description"].lower()
