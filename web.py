@@ -81,6 +81,14 @@ async def list_files():
     return {"files": files}
 
 
+@app.get("/api/active-document")
+async def active_document():
+    session = session_manager.active_session
+    if session is None or session.active_file is None:
+        return {"file": None}
+    return {"file": session.active_file}
+
+
 @app.get("/api/outputs")
 async def list_outputs():
     output_dir = Path.cwd() / "output"

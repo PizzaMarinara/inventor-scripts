@@ -400,3 +400,45 @@ def test_run_script_rejected_when_agent_already_running():
     msg = calls[0][0][0]
     assert msg["type"] == "error"
     assert "running" in msg["message"].lower()
+
+
+# ── /api/active-document ──────────────────────────────────────────────────────
+
+def test_api_active_document_returns_null_with_no_session():
+    from web import app, session_manager
+    session_manager.active_session = None
+
+    client = TestClient(app)
+    resp = client.get("/api/active-document")
+    assert resp.status_code == 200
+    assert resp.json() == {"file": None}
+
+
+def test_api_active_document_returns_active_file():
+    from web import app, session_manager, Session
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.active_file = "assembly.iam"
+    session_manager.active_session = mock_session
+
+    client = TestClient(app)
+    resp = client.get("/api/active-document")
+    assert resp.status_code == 200
+    assert resp.json() == {"file": "assembly.iam"}
+
+    session_manager.active_session = None  # cleanup
+
+
+def test_api_active_document_returns_null_when_no_file_loaded():
+    from web import app, session_manager, Session
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.active_file = None
+    session_manager.active_session = mock_session
+
+    client = TestClient(app)
+    resp = client.get("/api/active-document")
+    assert resp.status_code == 200
+    assert resp.json() == {"file": None}
+
+    session_manager.active_session = None  # cleanup
