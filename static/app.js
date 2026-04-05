@@ -16,9 +16,6 @@ const WS_URL = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.h
 let ws = null;
 let isRunning = false;
 let currentAgentBubble = null;   // the <div class="bubble-agent"> being built
-let selectedFile = "";           // currently selected input file (relative to input/)
-let filePickerOpen = false;
-let allFiles = [];               // cached file list from /api/files
 
 // ── WebSocket lifecycle ───────────────────────────────────────────────────────
 
@@ -93,7 +90,7 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
     if (isRunning || !ws) return;
     const message = document.getElementById("msg-input").value.trim();
     if (!message) return;
-    const file = selectedFile;
+    const file = document.getElementById("file-select").value;
     const provider = document.getElementById("provider-select").value || undefined;
     const apiKey = document.getElementById("api-key-input").value || undefined;
     ws.send(JSON.stringify({ type: "chat", message, file, provider, api_key: apiKey }));
@@ -114,7 +111,7 @@ document.getElementById("msg-input").addEventListener("keydown", (e) => {
 // ── Extract button ────────────────────────────────────────────────────────────
 
 document.getElementById("extract-btn").addEventListener("click", () => {
-    const file = selectedFile;
+    const file = document.getElementById("file-select").value;
     if (!file || isRunning || !ws) return;
     const instruction = `Extract all parameters from ${file} and show them as a table.`;
     const provider = document.getElementById("provider-select").value || undefined;
@@ -242,128 +239,20 @@ function escHtml(str) {
 
 // ── File list & outputs ───────────────────────────────────────────────────────
 
-// ── File banner + tree picker ─────────────────────────────────────────────────
-
-async function initFileBanner() {
-    try {
-        const resp = await fetch("/api/active-document");
-        const { file } = await resp.json();
-        if (file) {
-            selectedFile = file;
-            setBannerState("live", file);
-        } else {
-            setBannerState("none", null);
-        }
-    } catch (e) {
-        setBannerState("none", null);
-    }
-    await loadFileList();
-}
-
 async function loadFileList() {
     try {
         const resp = await fetch("/api/files");
         const { files } = await resp.json();
-        allFiles = files;
-        renderFileTree(files);
+        const sel = document.getElementById("file-select");
+        files.forEach((f) => {
+            const opt = document.createElement("option");
+            opt.value = f;
+            opt.textContent = f;
+            sel.appendChild(opt);
+        });
     } catch (e) {
         console.warn("[files] could not load file list", e);
     }
-}
-
-function setBannerState(state, filename) {
-    // state: "live" | "selected" | "none"
-    const banner = document.getElementById("file-banner");
-    const dot = document.getElementById("file-banner-dot");
-    const name = document.getElementById("file-banner-name");
-    banner.className = state === "none" ? "banner-none" : "";
-    dot.className = `file-dot file-dot-${state === "live" ? "live" : state === "selected" ? "selected" : "none"}`;
-    name.textContent = filename || "No file selected";
-}
-
-function renderFileTree(files) {
-    const tree = document.getElementById("file-tree");
-    tree.innerHTML = "";
-
-    // Group by first directory segment
-    const rootFiles = [];
-    const dirs = {}; // dirName → [{fullPath, name}]
-    files.forEach((f) => {
-        const slashIdx = f.indexOf("/");
-        if (slashIdx === -1) {
-            rootFiles.push(f);
-        } else {
-            const dir = f.substring(0, slashIdx);
-            const name = f.substring(slashIdx + 1);
-            if (!dirs[dir]) dirs[dir] = [];
-            dirs[dir].push({ fullPath: f, name });
-        }
-    });
-
-    if (files.length === 0) {
-        const msg = document.createElement("div");
-        msg.style.cssText = "padding: 0.5rem 0.75rem; font-size: 0.8rem; color: #9ca3af;";
-        msg.textContent = "No input files found. Add .ipt/.iam files to the input/ folder.";
-        tree.appendChild(msg);
-        return;
-    }
-
-    // Root files
-    if (rootFiles.length > 0) {
-        const label = document.createElement("div");
-        label.className = "file-tree-group-label";
-        label.textContent = "input/ (root)";
-        tree.appendChild(label);
-        rootFiles.forEach((f) => tree.appendChild(makeFileItem(f, f, true)));
-    }
-
-    // Subdirectories
-    Object.entries(dirs).sort(([a], [b]) => a.localeCompare(b)).forEach(([dir, items]) => {
-        const header = document.createElement("div");
-        header.className = "file-tree-dir-header";
-        const arrow = document.createElement("span");
-        arrow.className = "file-tree-dir-arrow";
-        arrow.textContent = "▸";
-        header.appendChild(arrow);
-        header.appendChild(document.createTextNode(" 📁 " + dir + "/"));
-        tree.appendChild(header);
-
-        const children = document.createElement("div");
-        children.className = "file-tree-dir-children";
-        items.forEach(({ fullPath, name }) => children.appendChild(makeFileItem(fullPath, name, false)));
-        tree.appendChild(children);
-
-        header.addEventListener("click", () => {
-            const expanded = children.classList.toggle("expanded");
-            arrow.textContent = expanded ? "▾" : "▸";
-        });
-    });
-}
-
-function makeFileItem(fullPath, displayName, isRoot) {
-    const item = document.createElement("div");
-    item.className = "file-tree-item" + (isRoot ? " root-item" : "");
-    const isLive = fullPath === selectedFile;
-    if (isLive) item.classList.add("live-item");
-
-    item.appendChild(document.createTextNode(displayName));
-    if (isLive) {
-        const badge = document.createElement("span");
-        badge.className = "file-tree-live-badge";
-        badge.textContent = "LIVE";
-        item.appendChild(badge);
-    }
-    item.addEventListener("click", () => {
-        selectedFile = fullPath;
-        setBannerState("selected", fullPath);
-        togglePicker(false);
-    });
-    return item;
-}
-
-function togglePicker(forceState) {
-    filePickerOpen = forceState !== undefined ? forceState : !filePickerOpen;
-    document.getElementById("file-picker").classList.toggle("hidden", !filePickerOpen);
 }
 
 async function refreshOutputsList() {
@@ -390,14 +279,9 @@ async function refreshOutputsList() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    initFileBanner();
+    loadFileList();
     refreshOutputsList();
     loadScriptsList();
-    document.getElementById("file-change-btn").addEventListener("click", () => {
-        renderFileTree(allFiles);
-        togglePicker();
-    });
-    document.getElementById("file-refresh-btn").addEventListener("click", loadFileList);
 });
 
 // ── Script management ─────────────────────────────────────────────────────────

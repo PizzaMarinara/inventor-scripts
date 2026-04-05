@@ -61,125 +61,16 @@ html, body {
   margin-bottom: 0.5rem;
 }
 
-/* ── File banner ────────────────────────────────────────────────────────────── */
-#file-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 0.5rem;
-  min-width: 0;
-}
-#file-banner.banner-none {
-  background: #f9fafb;
-  border-color: #e5e7eb;
-}
-.file-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.file-dot-live  { background: #22c55e; }
-.file-dot-selected { background: #60a5fa; }
-.file-dot-none  { background: #d1d5db; }
-.file-banner-name {
-  flex: 1;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #15803d;
-}
-#file-banner.banner-none .file-banner-name { color: #6b7280; }
-.file-change-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid #86efac;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  color: #15803d;
-  padding: 3px 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.file-change-btn:hover { background: #dcfce7; }
-#file-banner.banner-none .file-change-btn {
-  border-color: #d1d5db;
-  color: #6b7280;
-}
-#file-banner.banner-none .file-change-btn:hover { background: #f3f4f6; }
-
-/* ── File picker ─────────────────────────────────────────────────────────────── */
-#file-picker {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  margin-bottom: 0.5rem;
-  max-height: 220px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.file-tree-group-label {
-  font-size: 0.7rem;
-  color: #9ca3af;
-  font-style: italic;
-  padding: 0.3rem 0.6rem 0.15rem;
-  border-top: 1px solid #e5e7eb;
-}
-.file-tree-group-label:first-child { border-top: none; }
-.file-tree-dir-header {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.6rem;
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #374151;
-  user-select: none;
-}
-.file-tree-dir-header:hover { background: #f3f4f6; }
-.file-tree-dir-arrow { font-size: 0.65rem; color: #9ca3af; }
-.file-tree-dir-children { display: none; }
-.file-tree-dir-children.expanded { display: block; }
-.file-tree-item {
-  padding: 0.28rem 0.6rem 0.28rem 1.2rem;
-  font-size: 0.82rem;
-  color: #374151;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.3rem;
-}
-.file-tree-item.root-item { padding-left: 0.6rem; }
-.file-tree-item:hover { background: #eff6ff; color: #1d4ed8; }
-.file-tree-item.live-item { color: #15803d; background: #f0fdf4; }
-.file-tree-live-badge {
-  font-size: 0.6rem;
-  background: #22c55e;
-  color: #fff;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-.file-refresh-btn {
-  display: block;
+#file-select {
   width: 100%;
-  text-align: right;
-  background: transparent;
-  border: none;
-  font-size: 0.72rem;
-  color: #9ca3af;
-  padding: 0.2rem 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: #fff;
+  margin-bottom: 0.5rem;
   cursor: pointer;
 }
-.file-refresh-btn:hover { color: #6b7280; }
 
 #extract-btn {
   width: 100%;
