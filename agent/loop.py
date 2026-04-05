@@ -305,15 +305,20 @@ class AgentLoop:
             )
 
             if response.stop_reason == "end_turn":
+                if not response.text and not response.assistant_content:
+                    logger.warning("LLM returned empty assistant content on iteration %d", iteration)
+                    yield StreamEvent(
+                        type="error",
+                        content="Agent returned an empty response. The provider may have had an issue — please try again.",
+                        iterations=iteration,
+                    )
+                    return
                 # Persist: add the user turn + assistant reply to history.
                 assistant_msg = (
                     response.assistant_content
                     if response.assistant_content
                     else response.text
                 )
-                if not assistant_msg:
-                    logger.warning("LLM returned empty assistant content on iteration %d", iteration)
-                    assistant_msg = "(no response)"
                 self._history = messages + [
                     {"role": "assistant", "content": assistant_msg}
                 ]

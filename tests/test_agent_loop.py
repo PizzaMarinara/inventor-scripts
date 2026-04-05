@@ -198,28 +198,28 @@ def test_max_iterations_does_not_corrupt_history():
     )
 
 
-def test_empty_assistant_message_uses_fallback_and_logs_warning():
-    """L2 regression: empty assistant content must fall back to '(no response)' and log a warning."""
+def test_empty_assistant_content_yields_error_event():
+    """Empty LLM response must yield an error StreamEvent, not a silent done."""
     empty_response = LLMResponse(
         stop_reason="end_turn",
         text="",
         assistant_content=[],
     )
     llm = make_mock_llm([empty_response])
-
     loop = AgentLoop(llm=llm, executor=ToolExecutor(doc=make_mock_doc(), conn=MagicMock()))
 
     with patch("agent.loop.logger") as mock_logger:
         events = list(loop.run_streaming("hello"))
 
-    # The fallback text must be stored in history
-    assert any(
-        msg.get("content") == "(no response)"
-        for msg in loop._history
-        if msg.get("role") == "assistant"
-    ), f"Expected '(no response)' fallback in history, got: {loop._history}"
+    error_events = [e for e in events if e.type == "error"]
+    assert len(error_events) == 1, f"Expected one error event, got: {[e.type for e in events]}"
+    assert "empty" in error_events[0].content.lower()
 
-    # A warning must have been logged
+    # No done event should follow
+    done_events = [e for e in events if e.type == "done"]
+    assert len(done_events) == 0
+
+    # Warning must still be logged for observability
     mock_logger.warning.assert_called_once()
     assert "empty" in mock_logger.warning.call_args[0][0].lower()
 
