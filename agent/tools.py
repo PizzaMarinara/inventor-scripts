@@ -35,6 +35,8 @@ class ToolName(StrEnum):
     GET_ALL_OCCURRENCE_PARAMETERS = "get_all_occurrence_parameters"
     # Script generation
     GENERATE_SCRIPT = "generate_script"
+    # Script execution
+    RUN_SCRIPT = "run_script"
 
 
 TOOLS: list[dict] = [
@@ -367,6 +369,28 @@ TOOLS: list[dict] = [
                 },
             },
             "required": ["script_content", "script_type", "description"],
+        },
+    },
+    {
+        "name": ToolName.RUN_SCRIPT,
+        "description": (
+            "Run a previously generated script from the scripts/ directory. "
+            "Only call this after the user has explicitly confirmed they want to run it. "
+            "Returns stdout and stderr for Python scripts, or output and error for iLogic rules."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "Filename of the script in scripts/ (e.g. '20260402_120000_change_width.py')",
+                },
+                "file_path": {
+                    "type": "string",
+                    "description": "Optional: override the active Inventor file path passed to the script",
+                },
+            },
+            "required": ["filename"],
         },
     },
 ]

@@ -76,6 +76,13 @@ Script generation (generate_script tool):
 - iLogic rules are simpler — write the rule body directly without imports or COM setup.
 - After generating a script, inform the user of the filename and what it does.
 
+Script execution (run_script tool):
+- After calling generate_script, always follow up with:
+  "Script saved to `scripts/<filename>`. Shall I run it now? You can also specify any adjustments before I do."
+- Wait for the user's confirmed reply before calling run_script.
+- If the user replies with modifications, call generate_script again with the updated content first, then call run_script.
+- run_script returns stdout/output — report the result to the user concisely.
+
 Occurrence tools (assembly only):
 - Occurrence names include a :N suffix (e.g. "maincyl:1", not "maincyl"). Always use
   the full name exactly as shown in describe_model output. Do not strip the suffix.
@@ -250,6 +257,35 @@ class ToolExecutor:
                 }
             except Exception as e:
                 return {"error": f"Failed to save script: {e}"}
+
+        elif name == "run_script":
+            from script_generator import get_script_content, run_python_script, run_ilogic_rule, SCRIPTS_DIR
+            filename = inp["filename"]
+            try:
+                content, script_type = get_script_content(filename)
+            except FileNotFoundError:
+                return {"error": f"Script not found: {filename}"}
+            except ValueError:
+                return {"error": f"Invalid filename: {filename}"}
+
+            script_path = SCRIPTS_DIR / filename
+            file_path = inp.get("file_path")
+
+            if script_type == "python":
+                result = run_python_script(script_path, file_path=file_path)
+                return {
+                    "success": result.get("exit_code", -1) == 0,
+                    "output": result.get("stdout", ""),
+                    "error": result.get("stderr", ""),
+                    "timed_out": result.get("timed_out", False),
+                }
+            else:  # ilogic
+                result = run_ilogic_rule(content, file_path=file_path, conn=self.conn)
+                return {
+                    "success": result.get("success", False),
+                    "output": result.get("output", ""),
+                    "error": result.get("error", ""),
+                }
 
         else:
             return {"error": f"Unknown tool: {name}"}
