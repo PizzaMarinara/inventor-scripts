@@ -659,3 +659,22 @@ def test_system_prompt_contains_run_script_guidance():
     from agent.loop import SYSTEM_PROMPT
     assert "run_script" in SYSTEM_PROMPT
     assert "confirmed" in SYSTEM_PROMPT.lower() or "confirm" in SYSTEM_PROMPT.lower()
+
+
+# ── System prompt quality tests ───────────────────────────────────────────────
+
+def test_system_prompt_contains_planning_step():
+    from agent.loop import SYSTEM_PROMPT
+    assert "plan" in SYSTEM_PROMPT.lower(), "SYSTEM_PROMPT must instruct the agent to state a plan before acting"
+
+
+def test_system_prompt_contains_output_quality_rules():
+    from agent.loop import SYSTEM_PROMPT
+    assert "concise" in SYSTEM_PROMPT.lower()
+    assert "backtick" in SYSTEM_PROMPT.lower() or "backticks" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_describe_model_rule_mentions_cache():
+    from agent.loop import SYSTEM_PROMPT
+    # The rule must now mention the cache consequence, not just be advisory
+    assert "cached" in SYSTEM_PROMPT.lower() or "cache" in SYSTEM_PROMPT.lower()
