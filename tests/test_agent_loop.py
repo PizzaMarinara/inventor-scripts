@@ -613,9 +613,9 @@ def test_executor_dispatches_run_script_python(tmp_path, monkeypatch):
     executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
     tc = ToolCall(id="t1", name="run_script", input={"filename": "test.py"})
 
-    with patch("agent.loop.get_script_content", return_value=("print('hello')", "python")), \
-         patch("agent.loop.run_python_script", return_value={"exit_code": 0, "stdout": "hello\n", "stderr": ""}) as mock_run, \
-         patch("agent.loop.SCRIPTS_DIR", scripts_dir):
+    with patch("script_generator.get_script_content", return_value=("print('hello')", "python")), \
+         patch("script_generator.run_python_script", return_value={"exit_code": 0, "stdout": "hello\n", "stderr": ""}) as mock_run, \
+         patch("script_generator.SCRIPTS_DIR", scripts_dir):
         result = executor.execute(tc)
 
     assert result["success"] is True
@@ -632,14 +632,14 @@ def test_executor_dispatches_run_script_ilogic(tmp_path, monkeypatch):
     executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
     tc = ToolCall(id="t1", name="run_script", input={"filename": "rule.ilogic"})
 
-    with patch("agent.loop.get_script_content", return_value=("Parameter('X') = 10", "ilogic")), \
-         patch("agent.loop.run_ilogic_rule", return_value={"success": True, "output": "done", "error": ""}) as mock_run, \
-         patch("agent.loop.SCRIPTS_DIR", scripts_dir):
+    with patch("script_generator.get_script_content", return_value=("Parameter('X') = 10", "ilogic")), \
+         patch("script_generator.run_ilogic_rule", return_value={"success": True, "output": "done", "error": ""}) as mock_run, \
+         patch("script_generator.SCRIPTS_DIR", scripts_dir):
         result = executor.execute(tc)
 
     assert result["success"] is True
     assert result["output"] == "done"
-    mock_run.assert_called_once()
+    mock_run.assert_called_once_with("Parameter('X') = 10", file_path=None, conn=executor.conn)
 
 
 def test_executor_run_script_returns_error_for_missing_file(tmp_path, monkeypatch):
@@ -648,7 +648,7 @@ def test_executor_run_script_returns_error_for_missing_file(tmp_path, monkeypatc
     executor = ToolExecutor(doc=make_mock_doc(), conn=MagicMock())
     tc = ToolCall(id="t1", name="run_script", input={"filename": "ghost.py"})
 
-    with patch("agent.loop.get_script_content", side_effect=FileNotFoundError()):
+    with patch("script_generator.get_script_content", side_effect=FileNotFoundError()):
         result = executor.execute(tc)
 
     assert "error" in result
